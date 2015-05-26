@@ -375,9 +375,9 @@ namespace aspect
       {
         Tensor<1,3> velocity;
 
-        velocity[0] = -1.0 * s_velocities[1] * std::sin(s_position[1]) + s_velocities[0]*std::cos(s_position[0])*std::cos(s_position[1]);
-        velocity[1] = s_velocities[1]*std::cos(s_position[1])+s_velocities[0]*std::cos(s_position[0])*std::sin(s_position[1]);
-        velocity[2] = -1.0*s_velocities[0]*std::sin(s_position[0]);
+        velocity[0] = -1.0 * s_velocities[1] * std::sin(s_position[1]) + s_velocities[0]*std::cos(s_position[2])*std::cos(s_position[1]);
+        velocity[1] = s_velocities[1]*std::cos(s_position[1])+s_velocities[0]*std::cos(s_position[2])*std::sin(s_position[1]);
+        velocity[2] = -1.0*s_velocities[0]*std::sin(s_position[2]);
         return velocity;
       }
 

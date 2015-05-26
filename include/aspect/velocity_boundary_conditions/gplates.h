@@ -172,7 +172,8 @@ namespace aspect
            * @param s_velocities Surface velocities in spherical coordinates
            * (theta, phi)
            * @param s_position Position in spherical coordinates
-           * (theta,phi,radius)
+           * // alt:(theta,phi,radius)
+           * (radius,phi,theta)
            */
           Tensor<1,3> sphere_to_cart_velocity(const Tensor<1,2> &s_velocities,
                                               const std_cxx11::array<double,3> &s_position) const;
