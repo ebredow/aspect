@@ -39,18 +39,11 @@ namespace aspect
   {
     namespace internal
     {
-      GPlatesLookup::GPlatesLookup(const Tensor<1,2> &surface_point_one,
-                                   const Tensor<1,2> &surface_point_two,
-                                   const double interpolation_width_)
-        :
-        velocity_vals(0,0),
-        old_velocity_vals(0,0),
-        velocity_positions(0,0),
-        velocity_values (&velocity_vals),
-        old_velocity_values (&old_velocity_vals),
-        delta_phi(0.0),
-        delta_theta(0.0),
-        interpolation_width(interpolation_width_)
+      template <int dim>
+      GPlatesLookup<dim>::GPlatesLookup(const Tensor<1,2> &surface_point_one,
+                                   const Tensor<1,2> &surface_point_two)
+                                   :
+                                   velocities(2)
       {
         // get the Cartesian coordinates of the points the 2D model will lie in
         // this computation is done also for 3D since it is not expensive and the
@@ -111,7 +104,7 @@ namespace aspect
       }
 
       template <int dim>
-      void GPlatesLookup::screen_output(const Tensor<1,2> &surface_point_one,
+      void GPlatesLookup<dim>::screen_output(const Tensor<1,2> &surface_point_one,
                                         const Tensor<1,2> &surface_point_two,
                                         const ConditionalOStream &pcout) const
       {
@@ -149,15 +142,9 @@ namespace aspect
         pcout << output.str();
       }
 
-      bool
-      GPlatesLookup::fexists(const std::string &filename) const
-      {
-        std::ifstream ifile(filename.c_str());
-        return !(!ifile); // only in c++11 you can convert to bool directly
-      }
-
+      template <int dim>
       void
-      GPlatesLookup::load_file(const std::string &filename, const ConditionalOStream &pcout)
+      GPlatesLookup<dim>::load_file(const std::string &filename, const ConditionalOStream &pcout)
       {
         pcout << std::endl << "   Loading GPlates boundary velocity file "
               << filename << "." << std::endl << std::endl;
@@ -168,7 +155,7 @@ namespace aspect
         // Check whether file exists, we do not want to throw
         // an exception in case it does not, because it could be by purpose
         // (i.e. the end of the boundary condition is reached)
-        AssertThrow (fexists(filename),
+        AssertThrow (Utilities::fexists(filename),
                      ExcMessage (std::string("GPlates file <")
                                  +
                                  filename
@@ -191,21 +178,13 @@ namespace aspect
         AssertThrow(dn_theta - n_theta <= 1e-5,
                     ExcMessage("The velocity file has a grid structure that is not readable. Please refer to the manual for a proper grid structure."));
 
-        if ((delta_theta != 0.0) || (delta_phi != 0.0))
-          {
-            Assert((delta_theta - numbers::PI / (n_theta-1)) <= 1e-7,  ExcMessage("Resolution changed during boundary conditions. Interpolation is not working correctly."));
-            Assert((delta_phi - 2*numbers::PI / n_phi) <= 1e-7,  ExcMessage("Resolution changed during boundary conditions. Interpolation is not working correctly."));
-          }
-
         delta_theta =   numbers::PI / (n_theta-1);
         delta_phi   = 2*numbers::PI / n_phi;
 
-        // swap pointers to old and new values, we overwrite the old ones
-        // and the new ones become the old ones
-        std::swap (velocity_values, old_velocity_values);
-
-        (*velocity_values).reinit(n_theta,n_phi);
-        velocity_positions.reinit(n_theta,n_phi);
+        /**
+         * Tables which contain the velocities
+         */
+        std::vector<Table<2,double> > velocity_values(2,Table<2,double>(n_theta,n_phi));
 
         std::string velos = pt.get<std::string>("gpml:FeatureCollection.gml:featureMember.gpml:VelocityField.gml:rangeSet.gml:DataBlock.gml:tupleList");
         std::stringstream in(velos, std::ios::in);
@@ -220,31 +199,44 @@ namespace aspect
 
         unsigned int i = 0;
         char sep;
-        while (!in.eof())
+        Tensor<1,2> spherical_velocities;
+
+        while (in >> spherical_velocities[0]>> sep >> spherical_velocities[1])
           {
-            Tensor<1,2> spherical_velocities;
-            const double cmyr_si = 3.1557e9;
-
-            in >> spherical_velocities[0] >> sep >> spherical_velocities[1];
-
-            if (in.eof())
-              break;
+            const double cmyr_si = 0.01/year_in_seconds;
 
             const unsigned int idx_theta = i / n_phi;
             const unsigned int idx_phi = (i + longitude_correction) % n_phi;
 
-            // Currently it would not be necessary to update the grid positions at every timestep
-            // since they are not allowed to change. In case we allow this later, do it anyway.
-            Tensor<1,3> spherical_position = get_grid_point_position(idx_theta,idx_phi,false);
-            if (idx_theta==0 || idx_theta==n_theta-1)
-              // Gplate gpml files set the longitude of all points at poles to zero instead of vary from -180 to 180 degrees,
-              // we set this here as well to make sure that we get the correct cartesian velocity.
-              spherical_position[1]=0.;
-            velocity_positions[idx_theta][idx_phi] = cartesian_surface_coordinates(spherical_position);
-            (*velocity_values)[idx_theta][idx_phi] = sphere_to_cart_velocity(spherical_velocities,spherical_position)
-                                                     / cmyr_si;
+            velocity_values[0][idx_theta][idx_phi]= spherical_velocities[0] * cmyr_si;
+            velocity_values[1][idx_theta][idx_phi]= spherical_velocities[1] * cmyr_si;
 
             i++;
+          }
+
+
+            // number of intervals in the direction of theta and phi
+            std_cxx11::array<unsigned int,2> table_intervals;
+            table_intervals[0] = n_theta - 1;
+            table_intervals[1] = n_phi - 1;
+
+
+            // min and max extent of the grid in the direction of theta and phi (whole spheres in GPlates)
+            // polar angle theta: from 0° to 180°(PI)
+            grid_extent[0].first = 0;
+            grid_extent[0].second = numbers::PI;
+            // azimuthal angle phi: from 0° to 360°(2*PI)
+            grid_extent[1].first = 0;
+            grid_extent[1].second = 2 * numbers::PI;
+
+
+            for (unsigned int i = 0; i < 2; i++)
+              {
+                if (velocities[i])
+                  delete velocities[i];
+                velocities[i] = new Functions::InterpolatedUniformGridData<2> (grid_extent,
+                                                                               table_intervals,
+                                                                               velocity_values[i]);
           }
 
         AssertThrow(i == n_points,
@@ -253,8 +245,8 @@ namespace aspect
 
       template <int dim>
       Tensor<1,dim>
-      GPlatesLookup::surface_velocity(const Point<dim> &position,
-                                      const double time_weight) const
+      GPlatesLookup<dim>::surface_velocity(const Point<dim> &position,
+                                           const double time_weight) const
       {
         Tensor<1,3> internal_position;
         if (dim == 2)
@@ -262,163 +254,47 @@ namespace aspect
         else
           internal_position = convert_tensor<dim,3>(position);
 
+        //transform internal_position in spherical coordinates
+        const std_cxx11::array<double,3> internal_position_in_spher_array =
+            ::aspect::Utilities::spherical_coordinates(Point<3>(internal_position));
+
+        //remove the radius (first entry of internal_position_in_spher_array)
+        Point<2> internal_position_in_spher_rad;
+
+        for (unsigned int i = 1; i < 3; i++)
+                  {
+                    internal_position_in_spher_rad[i-1] = internal_position_in_spher_array[3-i];
+                  }
+
         // Main work, interpolate velocity at this point
-        const Tensor<1,3> interpolated_velocity = interpolate(internal_position, time_weight);
+        Tensor<1,2> interpolated_velocity;
+
+        for (unsigned int i = 0; i < 2; i++)
+          {
+            interpolated_velocity[i] = velocities[i]->value(internal_position_in_spher_rad);
+          }
+
+        //transform interpolated_velocity in cartesian coordinates
+        Tensor<1,3> interpolated_velocity_in_cart;
+        interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,internal_position_in_spher_array);
+
 
         Tensor<1,dim> output_boundary_velocity;
 
         if (dim == 2)
           // convert_tensor conveniently also handles the projection to the 2D plane by
           // omitting the z-component of velocity (since the 2D model lies in the x-y plane).
-          output_boundary_velocity = convert_tensor<3,dim>(transpose(rotation_matrix) * interpolated_velocity);
+          output_boundary_velocity = convert_tensor<3,dim>(transpose(rotation_matrix) * interpolated_velocity_in_cart);
         else
-          output_boundary_velocity = convert_tensor<3,dim>(interpolated_velocity);
+          output_boundary_velocity = convert_tensor<3,dim>(interpolated_velocity_in_cart);
 
         return output_boundary_velocity;
       }
 
+
+      template <int dim>
       Tensor<1,3>
-      GPlatesLookup::interpolate (const Tensor<1,3> position, const double time_weight) const
-      {
-        Tensor<1,3> surf_vel;
-
-        int spatial_index[2] = {0,0};
-        calculate_spatial_index(spatial_index,position);
-
-        // always use closest point, ensured by the check_termination = false setting
-        double n_interpolation_weight = add_interpolation_point(surf_vel,position,spatial_index,time_weight,false);
-
-        // If interpolation is requested, loop over points in theta, phi direction until we exit a circle of
-        // interpolation_width radius around the evaluation point position
-        if (interpolation_width > 0)
-          {
-            unsigned int i = 0;
-            unsigned int j = 1;
-            do
-              {
-                do
-                  {
-                    const int idx[2][2] = { {(int)(spatial_index[0]+i), (int)(spatial_index[1]+j)},
-                      {(int)(spatial_index[0]-i), (int)(spatial_index[1]-j)}
-                    };
-
-                    const double weight_1 = add_interpolation_point(surf_vel,position,idx[0],time_weight,true);
-                    const double weight_2 = add_interpolation_point(surf_vel,position,idx[1],time_weight,true);
-
-                    // termination criterion, our interpolation points are outside of the defined circle
-                    if ((std::abs(weight_1 + 1) < 1e-14) || (std::abs(weight_2 + 1) < 1e-14))
-                      {
-                        if (j == 0)
-                          {
-                            // If we are outside of the interpolation circle even without extending phi (j), we have
-                            // visited all possible interpolation points. Return current surf_vel.
-
-                            // If everything worked as intended the radial component of the velocity should be small.
-                            // However we can not do this check for velocity = 0. We assume velocities < 1e-16 m/s
-                            // to be essentially zero and pass the check in this case.
-                            double residual_normal_velocity(0.0);
-                            if (surf_vel.norm() > 1e-16)
-                              residual_normal_velocity = (surf_vel * position) / (surf_vel.norm() * position.norm());
-
-                            AssertThrow(residual_normal_velocity < 1e-11,
-                                        ExcMessage("Error in velocity boundary module interpolation. "
-                                                   "Radial component of velocity should be zero, but is not."));
-
-                            // After checking that the residual normal velocity is small
-                            // we might as well remove it to increase compatibility of the
-                            // pressure right hand side.
-                            const Tensor<1,3> normalized_position = position / position.norm();
-                            surf_vel -=  (surf_vel * normalized_position) * normalized_position;
-
-                            return surf_vel / n_interpolation_weight;
-                          }
-                        else
-                          {
-                            // We are outside of the interpolation circle, but resetting j to 0 (phi to original index)
-                            // and moving forward in theta direction (i) might show us more interpolation points.
-                            break;
-                          }
-                      }
-
-                    n_interpolation_weight += weight_1;
-                    n_interpolation_weight += weight_2;
-
-                    j++;
-                  }
-                while (j < velocity_values->n_cols() / 2);
-                j = 0;
-                i++;
-              }
-            while (i < velocity_values->n_rows() / 2);
-          }
-
-        // If everything worked as intended the radial component of the velocity should be small.
-        // However we can not do this check for velocity close to 0. We assume velocities < 1e-16 m/s
-        // to be essentially zero and pass the check in this case.
-        double residual_normal_velocity(0.0);
-        if (surf_vel.norm() > 1e-16)
-          residual_normal_velocity = (surf_vel * position) / (surf_vel.norm() * position.norm());
-
-        AssertThrow( residual_normal_velocity < 1e-11,
-                     ExcMessage("Error in velocity boundary module interpolation. "
-                                "Radial component of velocity should be zero, but is not."));
-
-        // After checking that the residual normal velocity is small
-        // we might as well remove it to increase compatibility of the
-        // pressure right hand side.
-        const Tensor<1,3> normalized_position = position / position.norm();
-        surf_vel -=  (surf_vel * normalized_position) * normalized_position;
-
-        // We have interpolated over the whole dataset of the provided velocities, which is ok.
-        // Velocity will be constant for all evaluation points in this case.
-        return surf_vel / n_interpolation_weight;
-      }
-
-      double
-      GPlatesLookup::add_interpolation_point(Tensor<1,3>       &surf_vel,
-                                             const Tensor<1,3> &position,
-                                             const int          spatial_index[2],
-                                             const double       time_weight,
-                                             const bool         check_termination) const
-      {
-        // If the point is extended over the poles, do not use it. It will be found
-        // by the check in phi direction.
-        if ((spatial_index[0] < 0) || (spatial_index[0] >= static_cast<int>(velocity_values->n_rows())))
-          return 0.0;
-
-        int idx[2] = {spatial_index[0],spatial_index[1]};
-        reformat_indices(idx);
-
-        const Tensor<1,3> spherical_point = get_grid_point_position(idx[0],idx[1],false);
-        const Tensor<1,3> cartesian_point = cartesian_surface_coordinates(spherical_point);
-
-        const double arc_dis = arc_distance(position,position.norm() * cartesian_point);
-
-        // termination criterion, our interpolation points are outside of the defined circle
-        if (check_termination && (arc_dis > interpolation_width))
-          {
-            return -1;
-          }
-
-        // sin(theta) accounts for the different area covered by grid points at varying latitudes
-        // the minimal value is chosen to weight points at the poles according to their number and area
-        const double point_weight = std::max(std::sin(spherical_point[0]),
-                                             std::sin(delta_theta/2)/velocity_values->n_cols());
-
-        const Tensor<1,3> normalized_position = position / position.norm();
-
-        const Tensor<1,3> velocity = (*velocity_values)[idx[0]][idx[1]];
-        const Tensor<1,3> old_velocity = (*old_velocity_values)[idx[0]][idx[1]];
-
-        surf_vel += point_weight * time_weight * rotate_grid_velocity(cartesian_point,normalized_position,velocity);
-        if (time_weight < 1.0 - 1e-7)
-          surf_vel += point_weight * (1-time_weight) * rotate_grid_velocity(cartesian_point,normalized_position,old_velocity);
-
-        return point_weight;
-      }
-
-      Tensor<1,3>
-      GPlatesLookup::rotate_grid_velocity(const Tensor<1,3> &data_position,
+      GPlatesLookup<dim>::rotate_grid_velocity(const Tensor<1,3> &data_position,
                                           const Tensor<1,3> &point_position,
                                           const Tensor<1,3> &data_velocity) const
       {
@@ -440,8 +316,9 @@ namespace aspect
       }
 
 
+      template <int dim>
       Tensor<1,3>
-      GPlatesLookup::get_grid_point_position(const unsigned int theta_index, const unsigned int phi_index, const bool cartesian) const
+      GPlatesLookup<dim>::get_grid_point_position(const unsigned int theta_index, const unsigned int phi_index, const bool cartesian) const
       {
         Tensor<1,3> spherical_position;
         spherical_position[0] = theta_index * delta_theta;
@@ -454,8 +331,9 @@ namespace aspect
           return spherical_position;
       }
 
+      template <int dim>
       double
-      GPlatesLookup::arc_distance(const Tensor<1,3> position_1, const Tensor<1,3> position_2) const
+      GPlatesLookup<dim>::arc_distance(const Tensor<1,3> position_1, const Tensor<1,3> position_2) const
       {
         const double cartesian_distance = (position_1-position_2).norm();
 
@@ -468,34 +346,10 @@ namespace aspect
         return arc_distance;
       }
 
-      void
-      GPlatesLookup::reformat_indices (int idx[2]) const
-      {
-        int reformatted_idxtheta = idx[0];
-        int reformatted_idxphi = idx[1] % velocity_values->n_cols();
 
-        if (reformatted_idxphi < 0)
-          reformatted_idxphi += velocity_values->n_cols();
-
-        if (idx[0] >  static_cast<int>(velocity_values->n_rows())-1)
-          {
-            reformatted_idxtheta = 2*(velocity_values->n_rows()-1) - idx[0];
-            reformatted_idxphi += velocity_values->n_cols()/2;
-            reformatted_idxphi = reformatted_idxphi % velocity_values->n_cols();
-          }
-        if (idx[0] < 0)
-          {
-            reformatted_idxtheta = -1 * idx[0];
-            reformatted_idxphi += velocity_values->n_cols()/2;
-            reformatted_idxphi = reformatted_idxphi % velocity_values->n_cols();
-          }
-
-        idx[0] = reformatted_idxtheta;
-        idx[1] = reformatted_idxphi;
-      }
-
+      template <int dim>
       Tensor<1,3>
-      GPlatesLookup::rotate_around_axis (const Tensor<1,3> &position, const Tensor<1,3> &rotation_axis, const double angle) const
+      GPlatesLookup<dim>::rotate_around_axis (const Tensor<1,3> &position, const Tensor<1,3> &rotation_axis, const double angle) const
       {
         Tensor<1,3> cross = cross_product_3d(rotation_axis,position);
         const Tensor<1,3> newpos = (1-std::cos(angle)) * rotation_axis*(rotation_axis*position) +
@@ -503,8 +357,9 @@ namespace aspect
         return newpos;
       }
 
+      template <int dim>
       Tensor<1,3>
-      GPlatesLookup::cartesian_surface_coordinates(const Tensor<1,3> &sposition) const
+      GPlatesLookup<dim>::cartesian_surface_coordinates(const Tensor<1,3> &sposition) const
       {
         Tensor<1,3> ccoord;
 
@@ -514,8 +369,9 @@ namespace aspect
         return ccoord;
       }
 
+      template <int dim>
       Tensor<1,3>
-      GPlatesLookup::sphere_to_cart_velocity(const Tensor<1,2> &s_velocities, const Tensor<1,3> &s_position) const
+      GPlatesLookup<dim>::sphere_to_cart_velocity(const Tensor<1,2> &s_velocities, const std_cxx11::array<double,3> &s_position) const
       {
         Tensor<1,3> velocity;
 
@@ -525,8 +381,9 @@ namespace aspect
         return velocity;
       }
 
+      template <int dim>
       Tensor<2,3>
-      GPlatesLookup::rotation_matrix_from_axis (const Tensor<1,3> &rotation_axis,
+      GPlatesLookup<dim>::rotation_matrix_from_axis (const Tensor<1,3> &rotation_axis,
                                                 const double rotation_angle) const
       {
         Tensor<2,3> rotation_matrix;
@@ -542,8 +399,9 @@ namespace aspect
         return rotation_matrix;
       }
 
+      template <int dim>
       double
-      GPlatesLookup::rotation_axis_from_matrix (Tensor<1,3> &rotation_axis,
+      GPlatesLookup<dim>::rotation_axis_from_matrix (Tensor<1,3> &rotation_axis,
                                                 const Tensor<2,3> &rotation_matrix) const
       {
         double rotation_angle = std::acos(0.5 * (rotation_matrix[0][0] + rotation_matrix[1][1] + rotation_matrix[2][2] - 1));
@@ -564,8 +422,9 @@ namespace aspect
         return rotation_angle;
       }
 
+      template <int dim>
       std_cxx11::array<double,3>
-      GPlatesLookup::angles_from_matrix(const Tensor<2,3> &rotation_matrix) const
+      GPlatesLookup<dim>::angles_from_matrix(const Tensor<2,3> &rotation_matrix) const
       {
         std_cxx11::array<double,3> orientation;
 
@@ -663,9 +522,10 @@ namespace aspect
         return orientation;
       }
 
+      template <int dim>
       template <int in, int out>
       Tensor<1,out>
-      GPlatesLookup::convert_tensor (const Tensor<1,in> &old_tensor) const
+      GPlatesLookup<dim>::convert_tensor (const Tensor<1,in> &old_tensor) const
       {
         Tensor<1,out> new_tensor;
         for (unsigned int i = 0; i < out; i++)
@@ -675,20 +535,10 @@ namespace aspect
         return new_tensor;
       }
 
-      void
-      GPlatesLookup::calculate_spatial_index(int *index,
-                                             const Tensor<1,3> &position) const
-      {
-        const std_cxx11::array<double,3> scoord =
-          ::aspect::Utilities::spherical_coordinates(static_cast<Point<3> > (position));
-        index[0] = lround(scoord[2]/delta_theta);
-        index[1] = lround(scoord[1]/delta_phi);
-        reformat_indices(index);
-      }
 
-
+      template <int dim>
       bool
-      GPlatesLookup::gplates_1_4_or_higher(const boost::property_tree::ptree &pt) const
+      GPlatesLookup<dim>::gplates_1_4_or_higher(const boost::property_tree::ptree &pt) const
       {
         const std::string gpml_version = pt.get<std::string>("gpml:FeatureCollection.<xmlattr>.gpml:version");
         const std::vector<std::string> string_versions = dealii::Utilities::split_string_list(gpml_version,'.');
@@ -719,7 +569,6 @@ namespace aspect
       time_dependent(true),
       point1("0.0,0.0"),
       point2("0.0,0.0"),
-      interpolation_width(0.0),
       lookup()
     {}
 
@@ -741,7 +590,7 @@ namespace aspect
                 ExcMessage ("To define a plane for the 2D model the two assigned points "
                             "may not be equal."));
 
-      lookup.reset(new internal::GPlatesLookup(pointone,pointtwo,interpolation_width));
+      lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
 
       const GeometryModel::Interface<dim> &geometry_model =
         this->get_geometry_model();
@@ -782,7 +631,7 @@ namespace aspect
       // This also sets time_weight to 1.0
       if ((create_filename (current_time_step) == create_filename (current_time_step+1)) && time_dependent)
         {
-          lookup->screen_output<dim> (pointone, pointtwo,this->get_pcout());
+          lookup->screen_output (pointone, pointtwo,this->get_pcout());
 
           lookup->load_file (create_filename (current_time_step),
                              this->get_pcout());
@@ -793,7 +642,7 @@ namespace aspect
       if (time_dependent && (time_relative_to_vel_file_start_time >= 0.0))
         {
           if (current_time_step < 0)
-            lookup->screen_output<dim> (pointone, pointtwo,this->get_pcout());
+            lookup->screen_output (pointone, pointtwo,this->get_pcout());
 
           if (static_cast<int> (time_relative_to_vel_file_start_time / time_step) > current_time_step)
             {

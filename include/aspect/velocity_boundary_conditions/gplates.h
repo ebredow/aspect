@@ -24,8 +24,11 @@
 
 #include <aspect/velocity_boundary_conditions/interface.h>
 #include <deal.II/base/std_cxx11/array.h>
+#include <deal.II/base/point.h>
 #include <deal.II/base/table.h>
 #include <aspect/simulator_access.h>
+#include <aspect/utilities.h>
+
 
 
 namespace aspect
@@ -44,6 +47,7 @@ namespace aspect
        * values at one particular time are interpolated between the two
        * currently loaded data sets.
        */
+      template <int dim>
       class GPlatesLookup
       {
         public:
@@ -54,8 +58,8 @@ namespace aspect
            * parameters for a 2D model.
            */
           GPlatesLookup(const Tensor<1,2> &pointone,
-                        const Tensor<1,2> &pointtwo,
-                        const double interpolation_width_);
+                        const Tensor<1,2> &pointtwo);
+
 
           /**
            * Outputs the GPlates module information at model start. Need to be
@@ -63,15 +67,10 @@ namespace aspect
            * SimulatorAccess is not initialized and only Rank 0 should give
            * the screen output.
            */
-          template <int dim>
           void screen_output(const Tensor<1,2> &surface_point_one,
                              const Tensor<1,2> &surface_point_two,
                              const ConditionalOStream &pcout) const;
 
-          /**
-           * Check whether a file named @p filename exists.
-           */
-          bool fexists(const std::string &filename) const;
 
           /**
            * Loads a gplates .gpml velocity file. Throws an exception if the
@@ -88,30 +87,19 @@ namespace aspect
            * @param time_weight A weighting between the two current timesteps
            * n and n+1
            */
-          template <int dim>
           Tensor<1,dim> surface_velocity(const Point<dim> &position,
                                          const double time_weight) const;
 
         private:
+          /**
+           * Interpolation functions to access the velocities.
+           */
+          std::vector<Functions::InterpolatedUniformGridData<2> *> velocities;
 
           /**
-           * Tables which contain the velocities
+           * Min and Max coordinates in data file
            */
-          Table<2,Tensor<1,3> > velocity_vals;
-          Table<2,Tensor<1,3> > old_velocity_vals;
-
-          /**
-           * Table for the data point positions.
-           */
-          Table<2,Tensor<1,3> > velocity_positions;
-
-          /**
-           * Pointers to the actual tables. Used to avoid unnecessary copying
-           * of values. These pointers point to either velocity_vals or
-           * old_velocity_vals.
-           */
-          Table<2,Tensor<1,3> > *velocity_values;
-          Table<2,Tensor<1,3> > *old_velocity_values;
+          std_cxx11::array<std::pair<double,double>,2> grid_extent;
 
           /**
            * Distances between adjacent point in the Lat/Long grid
@@ -124,16 +112,6 @@ namespace aspect
            * the two user prescribed points. Is not used for 3D.
            */
           Tensor<2,3> rotation_matrix;
-
-          /**
-           * Determines the width of the velocity interpolation zone around
-           * the current point. Currently equals the arc distance between
-           * evaluation point and velocity data point that is still included
-           * in the interpolation. The weighting of the points currently only
-           * accounts for the surface area a single data point is covering
-           * ('moving window' interpolation without distance weighting).
-           */
-          const double interpolation_width;
 
           /**
            * A function that returns the rotated vector r' that results out of
@@ -197,32 +175,8 @@ namespace aspect
            * (theta,phi,radius)
            */
           Tensor<1,3> sphere_to_cart_velocity(const Tensor<1,2> &s_velocities,
-                                              const Tensor<1,3> &s_position) const;
+                                              const std_cxx11::array<double,3> &s_position) const;
 
-          /**
-           * calculates the index given a certain position
-           *
-           * @param index Reference to the index field, which is modified.
-           * @param position Input position, which is converted to spatial
-           * index
-           */
-          void
-          calculate_spatial_index(int *index,
-                                  const Tensor<1,3> &position) const;
-
-          /**
-           * This function adds a certain data point to the interpolated
-           * surface velocity at this evaluation point. This includes
-           * calculating the interpolation weight and the rotation of the
-           * velocity to the evaluation point position (the velocity need to
-           * be tangential to the surface).
-           */
-          double
-          add_interpolation_point(Tensor<1,3>       &surf_vel,
-                                  const Tensor<1,3> &position,
-                                  const int          spatial_index[2],
-                                  const double       time_weight,
-                                  const bool         check_termination) const;
 
           /**
            * Returns a velocity vector that is rotated to be tangential to the
@@ -252,21 +206,6 @@ namespace aspect
            */
           double
           arc_distance(const Tensor<1,3> position_1, const Tensor<1,3> position_2) const;
-
-          /**
-           * Handles the actual multidimensional interpolation from velocity
-           * input to evaluation point position.
-           */
-          Tensor<1,3>
-          interpolate ( const Tensor<1,3> position,
-                        const double time_weight) const;
-
-          /**
-           * Bounds the theta and phi indices to the right sizes. Handles
-           * periodicity in phi and theta.
-           */
-          void
-          reformat_indices (int idx[2]) const;
 
           /**
            * Check whether the gpml file was created by GPlates1.4 or later.
@@ -416,7 +355,7 @@ namespace aspect
          * Pointer to an object that reads and processes data we get from
          * gplates files.
          */
-        std_cxx11::shared_ptr<internal::GPlatesLookup> lookup;
+        std_cxx11::shared_ptr<internal::GPlatesLookup<dim> > lookup;
 
         /**
          * Handles the update of the velocity data in lookup.
