@@ -45,7 +45,7 @@ subsection Boundary velocity model
     set Time step = 1e6
     set Point one = 1.5708,4.87
     set Point two = 1.5708,5.24
-    set Interpolation width = 2000000
+    set Lithosphere thickness = 660000
   end
 end
 

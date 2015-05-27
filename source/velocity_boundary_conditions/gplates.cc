@@ -370,6 +370,19 @@ namespace aspect
       }
 
       template <int dim>
+      Point<2>
+      GPlatesLookup<dim>::map_box_coordinates (Point<3> &sposition) const
+      {
+        Point<2> lambert_coord;
+
+        lambert_coord[0] = sqrt(2/(1-sposition[2]))*sposition[0];  // X
+        lambert_coord[1] = sqrt(2/(1-sposition[2]))*sposition[1];  // Y
+
+        return lambert_coord;
+      }
+
+
+      template <int dim>
       Tensor<1,3>
       GPlatesLookup<dim>::sphere_to_cart_velocity(const Tensor<1,2> &s_velocities, const std_cxx11::array<double,3> &s_position) const
       {
@@ -594,13 +607,13 @@ namespace aspect
 
       const GeometryModel::Interface<dim> &geometry_model =
         this->get_geometry_model();
-      (void)geometry_model;
-      Assert (dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&geometry_model) != 0,
-              ExcMessage ("This boundary condition can only be used if the geometry "
-                          "is a spherical shell."));
-      Assert((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&geometry_model))->opening_angle()==360,
-             ExcMessage("The gplates velocity model works only for an opening "
-                        "angle of the geometry equal to 360."));
+//      (void)geometry_model;
+//      Assert (dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&geometry_model) != 0,
+//              ExcMessage ("This boundary condition can only be used if the geometry "
+//                          "is a spherical shell."));
+//      Assert((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&geometry_model))->opening_angle()==360,
+//             ExcMessage("The gplates velocity model works only for an opening "
+//                        "angle of the geometry equal to 360."));
     }
 
 
@@ -743,7 +756,8 @@ namespace aspect
     GPlates<dim>::
     boundary_velocity (const Point<dim> &position) const
     {
-      if (time_relative_to_vel_file_start_time >= 0.0)
+      // check depth of position and use velocity or 0 depending on depth < lithosphere_thickness
+      if ((time_relative_to_vel_file_start_time >= 0.0) && (this->get_geometry_model().depth(position) <= lithosphere_thickness))
         return scale_factor * lookup->surface_velocity(position,time_weight);
       else
         return Tensor<1,dim> ();
@@ -796,13 +810,10 @@ namespace aspect
           prm.declare_entry ("Point two", "1.570796,1.570796",
                              Patterns::Anything (),
                              "Point that determines the plane in which a 2D model lies in. Has to be in the format 'a,b' where a and b are theta (polar angle)  and phi in radians.");
-          prm.declare_entry ("Interpolation width", "0",
+          prm.declare_entry ("Lithosphere thickness", "0",
                              Patterns::Double (0),
-                             "Determines the width of the velocity interpolation zone around the current point. "
-                             "Currently equals the arc distance between evaluation point and velocity data point that "
-                             "is still included in the interpolation. The weighting of the points currently only accounts "
-                             "for the surface area a single data point is covering ('moving window' interpolation without "
-                             "distance weighting).");
+                             "Determines the depth of the lithosphere, so that the GPlates velocities can be applied there "
+                             "as well as at the surface.");
         }
         prm.leave_subsection();
       }
@@ -840,10 +851,10 @@ namespace aspect
           }
 
           velocity_file_name    = prm.get ("Velocity file name");
-          interpolation_width   = prm.get_double ("Interpolation width");
           scale_factor          = prm.get_double ("Scale factor");
           point1                = prm.get ("Point one");
           point2                = prm.get ("Point two");
+          lithosphere_thickness = prm.get_double ("Lithosphere thickness");
 
           time_step             = prm.get_double ("Time step");
           velocity_file_start_time = prm.get_double ("Velocity file start time");
