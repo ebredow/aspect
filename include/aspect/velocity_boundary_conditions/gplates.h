@@ -166,6 +166,13 @@ namespace aspect
           cartesian_surface_coordinates(const Tensor<1,3> &sposition) const;
 
           /**
+           * Applies the Lambert azimuthal equal-area projection to a cartesian point (x,y,z)
+           * on a sphere and returns a cartesian point (X,Y) on a plane together with depth Z.
+           */
+          Point<2>
+          map_box_coordinates (Point<3> &sposition) const;
+
+          /**
            * Returns cartesian velocities calculated from surface velocities
            * and position in spherical coordinates
            *
@@ -343,14 +350,11 @@ namespace aspect
         Tensor<1,2> pointtwo;
 
         /**
-         * Determines the width of the velocity interpolation zone around the
-         * current point. Currently equals the arc distance between evaluation
-         * point and velocity data point that is still included in the
-         * interpolation. The weighting of the points currently only accounts
-         * for the surface area a single data point is covering ('moving
-         * window' interpolation without distance weighting).
+         * Determines the depth of the lithosphere. The user might want to apply
+         * the GPlates velocities not only at the surface of the model, but also
+         * in the whole lithosphere.
          */
-        double interpolation_width;
+        double lithosphere_thickness;
 
         /**
          * Pointer to an object that reads and processes data we get from
