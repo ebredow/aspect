@@ -32,6 +32,9 @@
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
+#include <aspect/geometry_model/box.h>
+#include <aspect/geometry_model/spherical_shell.h>
+
 
 namespace aspect
 {
@@ -40,10 +43,79 @@ namespace aspect
     namespace internal
     {
       template <int dim>
+      Mapping<dim>::Mapping()
+      {}
+
+      template <int dim>
+      Point<3>
+      Mapping<dim>::map_box_to_sphere_coordinates (Tensor<1,3> &bposition) const
+      {
+        Point<3> lambert_coord;
+
+        lambert_coord[0] = sqrt(1 - (((bposition[0] * bposition[0]) + (bposition[1] * bposition[1])) / 4)) * bposition[0];  // x
+        lambert_coord[1] = sqrt(1 - (((bposition[0] * bposition[0]) + (bposition[1] * bposition[1])) / 4)) * bposition[1];  // y
+        lambert_coord[2] =    (-1)+ (((bposition[0] * bposition[0]) + (bposition[1] * bposition[1])) / 2);                  // z
+
+        return lambert_coord;
+       }
+
+      template <int dim>
+      Point<2>
+      Mapping<dim>::map_sphere_to_box_coordinates (Point<3> &sposition) const
+      {
+        Point<2> lambert_coord;
+
+        lambert_coord[0] = sqrt(2/(1-sposition[2]))*sposition[0];  // X
+        lambert_coord[1] = sqrt(2/(1-sposition[2]))*sposition[1];  // Y
+
+        return lambert_coord;
+      }
+
+      template <int dim>
+      Tensor<1,2>
+      Mapping<dim>::map_box_to_sphere_velocities(Tensor<1,2> &bvelocities) const
+      {
+       Tensor<1,2> svelocities;
+
+       // TODO: actual mapping procedure needs to be implemented!!!
+       svelocities[0] = bvelocities[0];
+       svelocities[1] = bvelocities[1];
+
+       return svelocities;
+      }
+
+      template <int dim>
+      Tensor<1,dim>
+      Mapping<dim>::map_sphere_to_box_velocities(Tensor<1,dim> &svelocities) const
+      {
+       Tensor<1,dim> bvelocities;
+
+       // TODO: actual mapping procedure needs to be implemented!!!
+
+       return bvelocities;
+      }
+
+
+
+
+      template <int dim>
       GPlatesLookup<dim>::GPlatesLookup(const Tensor<1,2> &surface_point_one,
-                                   const Tensor<1,2> &surface_point_two)
-                                   :
-                                   velocities(2)
+                                        const Tensor<1,2> &surface_point_two,
+                                        Mapping<dim> &map)
+                                        :
+                                        velocities(2)
+      {
+        mapping.reset(&map);
+
+        GPlatesLookup(surface_point_one, surface_point_two);
+
+      }
+
+      template <int dim>
+      GPlatesLookup<dim>::GPlatesLookup(const Tensor<1,2> &surface_point_one,
+                                        const Tensor<1,2> &surface_point_two)
+                                        :
+                                        velocities(2)
       {
         // get the Cartesian coordinates of the points the 2D model will lie in
         // this computation is done also for 3D since it is not expensive and the
@@ -254,17 +326,24 @@ namespace aspect
         else
           internal_position = convert_tensor<dim,3>(position);
 
+        // for box geometry, cartesian coordinates of the box (plane) are mapped into cartesian coordinates on a sphere
+        Point<3> internal_position_mapped;
+        if (mapping != 0)
+          internal_position_mapped = mapping -> map_box_to_sphere_coordinates (internal_position);
+        else
+          internal_position_mapped = internal_position;
+
         //transform internal_position in spherical coordinates
         const std_cxx11::array<double,3> internal_position_in_spher_array =
-            ::aspect::Utilities::spherical_coordinates(Point<3>(internal_position));
+            ::aspect::Utilities::spherical_coordinates(Point<3>(internal_position_mapped));
 
         //remove the radius (first entry of internal_position_in_spher_array)
         Point<2> internal_position_in_spher_rad;
 
         for (unsigned int i = 1; i < 3; i++)
-                  {
-                    internal_position_in_spher_rad[i-1] = internal_position_in_spher_array[3-i];
-                  }
+          {
+            internal_position_in_spher_rad[i-1] = internal_position_in_spher_array[3-i];
+          }
 
         // Main work, interpolate velocity at this point
         Tensor<1,2> interpolated_velocity;
@@ -274,9 +353,17 @@ namespace aspect
             interpolated_velocity[i] = velocities[i]->value(internal_position_in_spher_rad);
           }
 
+
+        // for box geometry, velocities of the box (plane) are mapped into velocities on a sphere
+        Tensor<1,2> interpolated_velocity_mapped;
+        if (mapping != 0)
+          interpolated_velocity_mapped = mapping -> map_box_to_sphere_velocities (interpolated_velocity);
+        else
+          interpolated_velocity_mapped = interpolated_velocity;
+
         //transform interpolated_velocity in cartesian coordinates
         Tensor<1,3> interpolated_velocity_in_cart;
-        interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,internal_position_in_spher_array);
+        interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity_mapped,internal_position_in_spher_array);
 
 
         Tensor<1,dim> output_boundary_velocity;
@@ -368,19 +455,6 @@ namespace aspect
         ccoord[2] = std::cos(sposition[0]); // Z
         return ccoord;
       }
-
-      template <int dim>
-      Point<2>
-      GPlatesLookup<dim>::map_box_coordinates (Point<3> &sposition) const
-      {
-        Point<2> lambert_coord;
-
-        lambert_coord[0] = sqrt(2/(1-sposition[2]))*sposition[0];  // X
-        lambert_coord[1] = sqrt(2/(1-sposition[2]))*sposition[1];  // Y
-
-        return lambert_coord;
-      }
-
 
       template <int dim>
       Tensor<1,3>
@@ -603,19 +677,19 @@ namespace aspect
                 ExcMessage ("To define a plane for the 2D model the two assigned points "
                             "may not be equal."));
 
-      lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
+      internal::Mapping<dim> mapping;
+
+      if ((dynamic_cast<const GeometryModel::Box<dim>*> (&this->get_geometry_model())) == 0)
+        lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo,mapping));
+      else if ((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&this->get_geometry_model())) == 0)
+        lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
+      else
+        AssertThrow (false,ExcMessage ("This gplates plugin can only be used when using "
+                                       "a spherical shell or box geometry."));
 
       const GeometryModel::Interface<dim> &geometry_model =
         this->get_geometry_model();
-//      (void)geometry_model;
-//      Assert (dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&geometry_model) != 0,
-//              ExcMessage ("This boundary condition can only be used if the geometry "
-//                          "is a spherical shell."));
-//      Assert((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&geometry_model))->opening_angle()==360,
-//             ExcMessage("The gplates velocity model works only for an opening "
-//                        "angle of the geometry equal to 360."));
     }
-
 
 
     template <int dim>
@@ -762,6 +836,7 @@ namespace aspect
       else
         return Tensor<1,dim> ();
     }
+
 
     template <int dim>
     void
