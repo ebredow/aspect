@@ -30,7 +30,6 @@
 #include <aspect/utilities.h>
 
 
-
 namespace aspect
 {
   namespace VelocityBoundaryConditions
@@ -39,6 +38,48 @@ namespace aspect
 
     namespace internal
     {
+
+      /**
+       * Mapping handles all kinds of mapping procedures, such as the Lambert azimuthal equal-area projection
+       * of the coordinates in a box to coordinates on a sphere and vice versa. It also handles the mapping of
+       * the velocities.
+       */
+      template <int dim>
+      class Mapping
+      {
+        public:
+          Mapping();
+
+          /**
+           * Applies the Lambert azimuthal equal-area projection to a cartesian point (X,Y,Z) on a box
+           * (technically a plane where Z is ignored) and returns a cartesian point (x,y,z) on a sphere.
+           */
+          Point<3>
+          map_box_to_sphere_coordinates (Tensor<1,3> &bposition) const;
+
+          /**
+           * Applies the Lambert azimuthal equal-area projection to a cartesian point (x,y,z) on a sphere
+           * and returns a cartesian point (X,Y) on a plane.
+           */
+          Point<2>
+          map_sphere_to_box_coordinates (Point<3> &sposition) const;
+
+
+          /**
+           * Maps the velocities on a box to velocities on a sphere.
+           */
+          Tensor<1,2>
+          map_box_to_sphere_velocities(Tensor<1,2> &bvelocities) const;
+
+          /**
+           * Maps the velocities on a sphere to velocities on a box.
+           */
+          Tensor<1,dim>
+          map_sphere_to_box_velocities(Tensor<1,dim> &svelocities) const;
+      };
+
+
+
       /**
        * GPlatesLookup handles all kinds of tasks around looking up a certain
        * velocity boundary condition from a gplates .gpml file. This class
@@ -58,8 +99,16 @@ namespace aspect
            * parameters for a 2D model.
            */
           GPlatesLookup(const Tensor<1,2> &pointone,
-                        const Tensor<1,2> &pointtwo);
+                        const Tensor<1,2> &pointtwo,
+                        Mapping<dim> &mapping);
 
+          /**
+           * Initialize all members and the two pointers referring to the
+           * actual velocities. Also calculates any necessary rotation
+           * parameters for a 2D model.
+           */
+          GPlatesLookup(const Tensor<1,2> &pointone,
+                        const Tensor<1,2> &pointtwo);
 
           /**
            * Outputs the GPlates module information at model start. Need to be
@@ -114,6 +163,11 @@ namespace aspect
           Tensor<2,3> rotation_matrix;
 
           /**
+           * Pointer to an object that handles the mapping of positions and velocities.
+           */
+          std_cxx11::shared_ptr<internal::Mapping<dim> > mapping;
+
+          /**
            * A function that returns the rotated vector r' that results out of
            * a rotation from vector r around a specified rotation_axis by an
            * defined angle
@@ -164,13 +218,6 @@ namespace aspect
            */
           Tensor<1,3>
           cartesian_surface_coordinates(const Tensor<1,3> &sposition) const;
-
-          /**
-           * Applies the Lambert azimuthal equal-area projection to a cartesian point (x,y,z)
-           * on a sphere and returns a cartesian point (X,Y) on a plane together with depth Z.
-           */
-          Point<2>
-          map_box_coordinates (Point<3> &sposition) const;
 
           /**
            * Returns cartesian velocities calculated from surface velocities
