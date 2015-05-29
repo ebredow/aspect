@@ -868,7 +868,7 @@ namespace aspect
     GPlates<dim>::
     boundary_velocity (const Point<dim> &position) const
     {
-      if (this->get_time() - first_data_file_model_time >= 0.0)
+      if ((this->get_time() - first_data_file_model_time >= 0.0) && (this->get_geometry_model().depth(position) <= lithosphere_thickness))
         {
           const Tensor<1,dim> data = lookup->surface_velocity(position);
 
