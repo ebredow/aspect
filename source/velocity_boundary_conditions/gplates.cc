@@ -330,7 +330,10 @@ namespace aspect
         if (mapping != 0)
           internal_position_mapped = mapping->map_box_to_sphere_coordinates (internal_position);
         else
-          internal_position_mapped = internal_position;
+          for (unsigned int i = 0; i < 3; i++)
+                    {
+                      internal_position_mapped[i] = internal_position[i];
+                    }
 
          //transform internal_position in spherical coordinates
         const std_cxx11::array<double,3> internal_position_in_spher_array =
