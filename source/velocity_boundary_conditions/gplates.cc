@@ -105,17 +105,16 @@ namespace aspect
                                         :
                                         velocities(2)
       {
-        mapping.reset(&map);
-
         GPlatesLookup(surface_point_one, surface_point_two);
-
+        mapping.reset(&map);
       }
 
       template <int dim>
       GPlatesLookup<dim>::GPlatesLookup(const Tensor<1,2> &surface_point_one,
                                         const Tensor<1,2> &surface_point_two)
                                         :
-                                        velocities(2)
+                                        velocities(2),
+                                        mapping(0)
       {
         // get the Cartesian coordinates of the points the 2D model will lie in
         // this computation is done also for 3D since it is not expensive and the
@@ -329,13 +328,13 @@ namespace aspect
         // for box geometry, cartesian coordinates of the box (plane) are mapped into cartesian coordinates on a sphere
         Point<3> internal_position_mapped;
         if (mapping != 0)
-          internal_position_mapped = mapping -> map_box_to_sphere_coordinates (internal_position);
+          internal_position_mapped = mapping->map_box_to_sphere_coordinates (internal_position);
         else
           internal_position_mapped = internal_position;
 
-        //transform internal_position in spherical coordinates
+         //transform internal_position in spherical coordinates
         const std_cxx11::array<double,3> internal_position_in_spher_array =
-            ::aspect::Utilities::spherical_coordinates(Point<3>(internal_position_mapped));
+            ::aspect::Utilities::spherical_coordinates(internal_position_mapped);
 
         //remove the radius (first entry of internal_position_in_spher_array)
         Point<2> internal_position_in_spher_rad;
@@ -357,7 +356,7 @@ namespace aspect
         // for box geometry, velocities of the box (plane) are mapped into velocities on a sphere
         Tensor<1,2> interpolated_velocity_mapped;
         if (mapping != 0)
-          interpolated_velocity_mapped = mapping -> map_box_to_sphere_velocities (interpolated_velocity);
+          interpolated_velocity_mapped = mapping->map_box_to_sphere_velocities (interpolated_velocity);
         else
           interpolated_velocity_mapped = interpolated_velocity;
 
@@ -679,9 +678,9 @@ namespace aspect
 
       internal::Mapping<dim> mapping;
 
-      if ((dynamic_cast<const GeometryModel::Box<dim>*> (&this->get_geometry_model())) == 0)
+      if ((dynamic_cast<const GeometryModel::Box<dim>*> (&this->get_geometry_model())) != 0)
         lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo,mapping));
-      else if ((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&this->get_geometry_model())) == 0)
+      else if ((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&this->get_geometry_model())) != 0)
         lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
       else
         AssertThrow (false,ExcMessage ("This gplates plugin can only be used when using "
