@@ -215,11 +215,8 @@ namespace aspect
 
       template <int dim>
       void
-      GPlatesLookup<dim>::load_file(const std::string &filename, const ConditionalOStream &pcout)
+      GPlatesLookup<dim>::load_file(const std::string &filename)
       {
-        pcout << std::endl << "   Loading GPlates boundary velocity file "
-              << filename << "." << std::endl << std::endl;
-
         using boost::property_tree::ptree;
         ptree pt;
 
@@ -316,8 +313,7 @@ namespace aspect
 
       template <int dim>
       Tensor<1,dim>
-      GPlatesLookup<dim>::surface_velocity(const Point<dim> &position,
-                                           const double time_weight) const
+      GPlatesLookup<dim>::surface_velocity(const Point<dim> &position) const
       {
         Tensor<1,3> internal_position;
         if (dim == 2)
@@ -650,15 +646,18 @@ namespace aspect
     template <int dim>
     GPlates<dim>::GPlates ()
       :
-      time_relative_to_vel_file_start_time(0.0),
-      current_time_step(-2),
-      velocity_file_start_time(0.0),
-      time_step(0.0),
-      time_weight(0.0),
-      time_dependent(true),
-      point1("0.0,0.0"),
-      point2("0.0,0.0"),
-      lookup()
+    current_file_number(0),
+    first_data_file_model_time(0.0),
+    first_data_file_number(0),
+    decreasing_file_order(false),
+    data_file_time_step(0.0),
+    time_weight(0.0),
+    time_dependent(true),
+    point1("0.0,0.0"),
+    point2("0.0,0.0"),
+    lithosphere_thickness(0.0),
+    lookup(),
+    old_lookup()
     {}
 
 
@@ -682,15 +681,64 @@ namespace aspect
       internal::Mapping<dim> mapping;
 
       if ((dynamic_cast<const GeometryModel::Box<dim>*> (&this->get_geometry_model())) != 0)
-        lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo,mapping));
+        {
+          lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo,mapping));
+          old_lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo,mapping));
+        }
       else if ((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&this->get_geometry_model())) != 0)
-        lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
+        {
+          lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
+          old_lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
+        }
       else
         AssertThrow (false,ExcMessage ("This gplates plugin can only be used when using "
                                        "a spherical shell or box geometry."));
 
-      const GeometryModel::Interface<dim> &geometry_model =
-        this->get_geometry_model();
+
+      // Set the first file number and load the first files
+      current_file_number = first_data_file_number;
+
+      const int next_file_number =
+        (decreasing_file_order) ?
+        current_file_number - 1
+        :
+        current_file_number + 1;
+
+      this->get_pcout() << std::endl << "   Loading GPlates data boundary file "
+                        << create_filename (current_file_number) << "." << std::endl << std::endl;
+
+      const std::string filename (create_filename (current_file_number));
+      if (Utilities::fexists(filename))
+        lookup->load_file(filename);
+      else
+        AssertThrow(false,
+                    ExcMessage (std::string("GPlates data file <")
+                                +
+                                filename
+                                +
+                                "> not found!"));
+
+      // If the boundary condition is constant, switch off time_dependence
+      // immediately. If not, also load the second file for interpolation.
+      // This catches the case that many files are present, but the
+      // parameter file requests a single file.
+      if (create_filename (current_file_number) == create_filename (current_file_number+1))
+        {
+          end_time_dependence ();
+        }
+      else
+        {
+          const std::string filename (create_filename (next_file_number));
+          this->get_pcout() << std::endl << "   Loading GPlates data boundary file "
+                            << filename << "." << std::endl << std::endl;
+          if (Utilities::fexists(filename))
+            {
+              lookup.swap(old_lookup);
+              lookup->load_file(filename);
+            }
+          else
+            end_time_dependence ();
+        }
     }
 
 
@@ -712,119 +760,107 @@ namespace aspect
     void
     GPlates<dim>::update ()
     {
-      Interface<dim>::update ();
+      if (time_dependent && (this->get_time() - first_data_file_model_time >= 0.0))
+         {
+           const double time_steps_since_start = (this->get_time() - first_data_file_model_time)
+                                                 / data_file_time_step;
+           // whether we need to update our data files. This looks so complicated
+           // because we need to catch increasing and decreasing file orders and all
+           // possible first_data_file_model_times and first_data_file_numbers.
+           const bool need_update =
+             static_cast<int> (time_steps_since_start)
+             > std::abs(current_file_number - first_data_file_number);
 
-      time_relative_to_vel_file_start_time = this->get_time() - velocity_file_start_time;
+           if (need_update)
+             {
+               // The last file, which was tried to be loaded was
+               // number current_file_number +/- 1, because current_file_number
+               // is the file older than the current model time
+               const int old_file_number =
+                 (decreasing_file_order) ?
+                 current_file_number - 1
+                 :
+                 current_file_number + 1;
 
-      // If the boundary condition is constant, switch off time_dependence end leave function.
-      // This also sets time_weight to 1.0
-      if ((create_filename (current_time_step) == create_filename (current_time_step+1)) && time_dependent)
+               //Calculate new file_number
+               current_file_number =
+                 (decreasing_file_order) ?
+                 first_data_file_number
+                 - static_cast<unsigned int> (time_steps_since_start)
+                 :
+                 first_data_file_number
+                 + static_cast<unsigned int> (time_steps_since_start);
+
+               const bool load_both_files = std::abs(current_file_number - old_file_number) >= 1;
+
+               update_data(load_both_files);
+             }
+
+           time_weight = time_steps_since_start
+                         - std::abs(current_file_number - first_data_file_number);
+
+           Assert ((0 <= time_weight) && (time_weight <= 1),
+                   ExcMessage (
+                     "Error in set_current_time. Time_weight has to be in [0,1]"));
+         }
+    }
+
+    template <int dim>
+    void
+    GPlates<dim>::update_data (const bool load_both_files)
+    {
+      // If the time step was large enough to move forward more
+      // then one data file we need to load both current files
+      // to stay accurate in interpolation
+      if (load_both_files)
         {
-          lookup->screen_output (pointone, pointtwo,this->get_pcout());
-
-          lookup->load_file (create_filename (current_time_step),
-                             this->get_pcout());
-          end_time_dependence (current_time_step);
-          return;
-        }
-
-      if (time_dependent && (time_relative_to_vel_file_start_time >= 0.0))
-        {
-          if (current_time_step < 0)
-            lookup->screen_output (pointone, pointtwo,this->get_pcout());
-
-          if (static_cast<int> (time_relative_to_vel_file_start_time / time_step) > current_time_step)
+          const std::string filename (create_filename (current_file_number));
+          this->get_pcout() << std::endl << "   Loading GPlates data boundary file "
+                            << filename << "." << std::endl << std::endl;
+          if (Utilities::fexists(filename))
             {
-              update_velocity_data();
+              lookup.swap(old_lookup);
+              lookup->load_file(filename);
             }
 
-          time_weight = time_relative_to_vel_file_start_time / time_step - current_time_step;
-
-          Assert ((0 <= time_weight) && (time_weight <= 1),
-                  ExcMessage (
-                    "Error in set_current_time. Time_weight has to be in [0,1]"));
+          // If loading current_time_step failed, end time dependent part with old_file_number.
+          else
+            end_time_dependence ();
         }
+
+      // Now load the next data file. This part is the main purpose of this function.
+      const int next_file_number =
+        (decreasing_file_order) ?
+        current_file_number - 1
+        :
+        current_file_number + 1;
+
+      const std::string filename (create_filename (next_file_number));
+      this->get_pcout() << std::endl << "   Loading GPlates data boundary file "
+                        << filename << "." << std::endl << std::endl;
+      if (Utilities::fexists(filename))
+        {
+          lookup.swap(old_lookup);
+          lookup->load_file(filename);
+        }
+
+      // If next file does not exist, end time dependent part with current_time_step.
+      else
+        end_time_dependence ();
     }
 
     template <int dim>
     void
-    GPlates<dim>::update_velocity_data ()
+    GPlates<dim>::end_time_dependence ()
     {
-
-      const int old_time_step = current_time_step;
-      current_time_step =
-        static_cast<unsigned int> (time_relative_to_vel_file_start_time / time_step);
-      // Load next velocity file for interpolation
-      // If the time step was large enough to move forward more
-      // then one velocity file, we need to load both current files
-      // to stay accurate in interpolation
-      if (current_time_step > old_time_step + 1)
-        try
-          {
-            lookup->load_file (create_filename (current_time_step),
-                               this->get_pcout());
-          }
-        catch (...)
-          // If loading current_time_step failed, end time dependent part with old_time_step.
-          {
-            try
-              {
-                end_time_dependence (old_time_step);
-              }
-            catch (...)
-              {
-                // If loading the old file fails (e.g. there was no old file), cancel the model run.
-                // We might get here, if the time step is so large that step t is before the whole boundary condition
-                // while step t+1 is already behind all files in time.
-                AssertThrow (false,
-                             ExcMessage (
-                               "Loading new and old velocity file did not succeed. "
-                               "Maybe the time step was so large we jumped over all files "
-                               "or the files were removed during the model run. "
-                               "Another possible way here is to restart a model with "
-                               "previously time-dependent boundary condition after the "
-                               "last file was already read. Aspect has no way to find the "
-                               "last readable file from the current model time. Please "
-                               "prescribe the last velocity file manually in such a case. "
-                               "Cancelling calculation."));
-              }
-          }
-
-      // Now load the next velocity file. This part is the main purpose of this function.
-      try
-        {
-          lookup->load_file (create_filename (current_time_step + 1),
-                             this->get_pcout());
-        }
-
-      // If loading current_time_step + 1 failed, end time dependent part with current_time_step.
-      // We do not need to check for success here, because current_time_step was guaranteed to be
-      // at least tried to be loaded before, and if it fails, it should have done before (except from
-      // hard drive errors, in which case the exception is the right thing to be thrown).
-
-      catch (...)
-        {
-          end_time_dependence (current_time_step);
-        }
-    }
-
-    template <int dim>
-    void
-    GPlates<dim>::end_time_dependence (const int timestep)
-    {
-      // Next velocity file not found --> Constant velocities
-      // by simply loading the old file twice
-      lookup->load_file (create_filename (timestep), this->get_pcout());
       // no longer consider the problem time dependent from here on out
-      // this cancels all attempts to read files at the next time steps
-      time_dependent = false;
-      // this cancels the time interpolation in lookup
-      time_weight = 1.0;
-      // Give warning if first processor
-      this->get_pcout() << std::endl
-                        << "   Loading new velocity file did not succeed." << std::endl
-                        << "   Assuming constant boundary conditions for rest of model run."
-                        << std::endl << std::endl;
+       // this cancels all attempts to read files at the next time steps
+       time_dependent = false;
+       // Give warning if first processor
+       this->get_pcout() << std::endl
+                         << "   Loading new data file did not succeed." << std::endl
+                         << "   Assuming constant boundary conditions for rest of model run."
+                         << std::endl << std::endl;
     }
 
     template <int dim>
@@ -832,11 +868,19 @@ namespace aspect
     GPlates<dim>::
     boundary_velocity (const Point<dim> &position) const
     {
-      // check depth of position and use velocity or 0 depending on depth < lithosphere_thickness
-      if ((time_relative_to_vel_file_start_time >= 0.0) && (this->get_geometry_model().depth(position) <= lithosphere_thickness))
-        return scale_factor * lookup->surface_velocity(position,time_weight);
+      if (this->get_time() - first_data_file_model_time >= 0.0)
+        {
+          const Tensor<1,dim> data = lookup->surface_velocity(position);
+
+          if (!time_dependent)
+            return data;
+
+          const Tensor<1,dim> old_data = old_lookup->surface_velocity(position);
+
+          return time_weight * data + (1 - time_weight) * old_data;
+        }
       else
-        return Tensor<1,dim> ();
+        return Tensor<1,dim>();
     }
 
 
@@ -863,18 +907,30 @@ namespace aspect
                              "The file name of the material data. Provide file in format: "
                              "(Velocity file name).\\%d.gpml where \\%d is any sprintf integer "
                              "qualifier, specifying the format of the current file number.");
-          prm.declare_entry ("Time step", "1e6",
+          prm.declare_entry ("First data file model time", "0",
+                             Patterns::Double (0),
+                             "Time from which on the velocity file with number 'First velocity "
+                             "file number' is used as boundary condition. Previous to this "
+                             "time, a no-slip boundary condition is assumed. Depending on the setting "
+                             "of the global 'Use years in output instead of seconds' flag "
+                             "in the input file, this number is either interpreted as seconds or as years.");
+          prm.declare_entry ("First data file number", "0",
+                             Patterns::Integer (),
+                             "Number of the first velocity file to be loaded when the model time "
+                             "is larger than 'First velocity file model time'.");
+          prm.declare_entry ("Decreasing file order", "false",
+                             Patterns::Bool (),
+                             "In some cases the boundary files are not numbered in increasing "
+                             "but in decreasing order (e.g. 'Ma BP'). If this flag is set to "
+                             "'True' the plugin will first load the file with the number "
+                             "'First velocity file number' and decrease the file number during "
+                             "the model run.");
+          prm.declare_entry ("Data file time step", "1e6",
                              Patterns::Double (0),
                              "Time step between following velocity files. "
                              "Depending on the setting of the global 'Use years in output instead of seconds' flag "
                              "in the input file, this number is either interpreted as seconds or as years. "
                              "The default is one million, i.e., either one million seconds or one million years.");
-          prm.declare_entry ("Velocity file start time", "0.0",
-                             Patterns::Double (0),
-                             "Time at which the velocity file with number 0 shall be loaded. Previous to this "
-                             "time, a no-slip boundary condition is assumed. "
-                             "Depending on the setting of the global 'Use years in output instead of seconds' flag "
-                             "in the input file, this number is either interpreted as seconds or as years.");
           prm.declare_entry ("Scale factor", "1",
                              Patterns::Double (0),
                              "Scalar factor, which is applied to the boundary velocity. "
@@ -902,14 +958,6 @@ namespace aspect
     void
     GPlates<dim>::parse_parameters (ParameterHandler &prm)
     {
-      // Query the unit system for time since we may have to convert below.
-      // Note that we can't use this->convert_output_to_years() since this
-      // requires the SimulatorAccess base object to have been initialized,
-      // but this hasn't happened yet when we get into this function.
-      const bool
-      use_years_instead_of_seconds
-        = prm.get_bool ("Use years in output instead of seconds");
-
       prm.enter_subsection("Boundary velocity model");
       {
         prm.enter_subsection("GPlates model");
@@ -927,25 +975,26 @@ namespace aspect
                                       ASPECT_SOURCE_DIR);
           }
 
-          velocity_file_name    = prm.get ("Velocity file name");
+          velocity_file_name              = prm.get ("Velocity file name");
+          data_file_time_step             = prm.get_double ("Data file time step");
+          first_data_file_model_time      = prm.get_double ("First data file model time");
+          first_data_file_number          = prm.get_double ("First data file number");
+          decreasing_file_order           = prm.get_bool   ("Decreasing file order");
           scale_factor          = prm.get_double ("Scale factor");
           point1                = prm.get ("Point one");
           point2                = prm.get ("Point two");
           lithosphere_thickness = prm.get_double ("Lithosphere thickness");
 
-          time_step             = prm.get_double ("Time step");
-          velocity_file_start_time = prm.get_double ("Velocity file start time");
-          if (use_years_instead_of_seconds == true)
+          if (this->convert_output_to_years())
             {
-              time_step                *= year_in_seconds;
-              velocity_file_start_time *= year_in_seconds;
+              data_file_time_step        *= year_in_seconds;
+              first_data_file_model_time *= year_in_seconds;;
             }
         }
         prm.leave_subsection();
       }
       prm.leave_subsection();
     }
-
   }
 }
 
