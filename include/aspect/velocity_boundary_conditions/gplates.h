@@ -77,7 +77,8 @@ namespace aspect
 
           /**
            * Returns the computed surface velocity in cartesian coordinates.
-           * Takes as input the position.
+           * Takes as input the position. Actual velocity interpolation is
+           * performed in spherical coordinates.
            *
            * @param position The current position to compute velocity
            */
