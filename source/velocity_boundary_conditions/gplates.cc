@@ -272,11 +272,9 @@ namespace aspect
             interpolated_velocity[i] = velocities[i]->value(internal_position_in_spher_rad);
           }
 
-
         //transform interpolated_velocity in cartesian coordinates
         Tensor<1,3> interpolated_velocity_in_cart;
         interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,internal_position_in_spher_array);
-
 
         Tensor<1,dim> output_boundary_velocity;
 
