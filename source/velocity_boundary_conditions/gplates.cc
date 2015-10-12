@@ -16,7 +16,7 @@
   You should have received a copy of the GNU General Public License
   along with ASPECT; see the file doc/COPYING.  If not see
   <http://www.gnu.org/licenses/>.
- */
+*/
 
 
 #include <aspect/global.h>
@@ -32,7 +32,6 @@
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
-#include <aspect/geometry_model/box.h>
 #include <aspect/geometry_model/spherical_shell.h>
 
 
@@ -43,78 +42,10 @@ namespace aspect
     namespace internal
     {
       template <int dim>
-      Mapping<dim>::Mapping()
-      {}
-
-      template <int dim>
-      Point<3>
-      Mapping<dim>::map_box_to_sphere_coordinates (Tensor<1,3> &bposition) const
-      {
-        Point<3> lambert_coord;
-
-        lambert_coord[0] = sqrt(1 - (((bposition[0] * bposition[0]) + (bposition[1] * bposition[1])) / 4)) * bposition[0];  // x
-        lambert_coord[1] = sqrt(1 - (((bposition[0] * bposition[0]) + (bposition[1] * bposition[1])) / 4)) * bposition[1];  // y
-        lambert_coord[2] =    (-1)+ (((bposition[0] * bposition[0]) + (bposition[1] * bposition[1])) / 2);                  // z
-
-        return lambert_coord;
-       }
-
-      template <int dim>
-      Point<2>
-      Mapping<dim>::map_sphere_to_box_coordinates (Point<3> &sposition) const
-      {
-        Point<2> lambert_coord;
-
-        lambert_coord[0] = sqrt(2/(1-sposition[2]))*sposition[0];  // X
-        lambert_coord[1] = sqrt(2/(1-sposition[2]))*sposition[1];  // Y
-
-        return lambert_coord;
-      }
-
-      template <int dim>
-      Tensor<1,2>
-      Mapping<dim>::map_box_to_sphere_velocities(Tensor<1,2> &bvelocities) const
-      {
-       Tensor<1,2> svelocities;
-
-       // TODO: actual mapping procedure needs to be implemented!!!
-       svelocities[0] = bvelocities[0];
-       svelocities[1] = bvelocities[1];
-
-       return svelocities;
-      }
-
-      template <int dim>
-      Tensor<1,dim>
-      Mapping<dim>::map_sphere_to_box_velocities(Tensor<1,dim> &svelocities) const
-      {
-       Tensor<1,dim> bvelocities;
-
-       // TODO: actual mapping procedure needs to be implemented!!!
-
-       return bvelocities;
-      }
-
-
-
-
-      template <int dim>
-      GPlatesLookup<dim>::GPlatesLookup(const Tensor<1,2> &surface_point_one,
-                                        const Tensor<1,2> &surface_point_two,
-                                        Mapping<dim> &map)
-                                        :
-                                        velocities(2)
-      {
-        GPlatesLookup(surface_point_one, surface_point_two);
-        mapping.reset(&map);
-      }
-
-      template <int dim>
       GPlatesLookup<dim>::GPlatesLookup(const Tensor<1,2> &surface_point_one,
                                         const Tensor<1,2> &surface_point_two)
-                                        :
-                                        velocities(2),
-                                        mapping(0)
+        :
+        velocities(2)
       {
         // get the Cartesian coordinates of the points the 2D model will lie in
         // this computation is done also for 3D since it is not expensive and the
@@ -176,8 +107,8 @@ namespace aspect
 
       template <int dim>
       void GPlatesLookup<dim>::screen_output(const Tensor<1,2> &surface_point_one,
-                                        const Tensor<1,2> &surface_point_two,
-                                        const ConditionalOStream &pcout) const
+                                             const Tensor<1,2> &surface_point_two,
+                                             const ConditionalOStream &pcout) const
       {
         const Tensor<1,3> point_one = cartesian_surface_coordinates(convert_tensor<2,3>(surface_point_one));
         const Tensor<1,3> point_two = cartesian_surface_coordinates(convert_tensor<2,3>(surface_point_two));
@@ -283,28 +214,28 @@ namespace aspect
           }
 
 
-            // number of intervals in the direction of theta and phi
-            std_cxx11::array<unsigned int,2> table_intervals;
-            table_intervals[0] = n_theta - 1;
-            table_intervals[1] = n_phi - 1;
+        // number of intervals in the direction of theta and phi
+        std_cxx11::array<unsigned int,2> table_intervals;
+        table_intervals[0] = n_theta - 1;
+        table_intervals[1] = n_phi - 1;
 
 
-            // min and max extent of the grid in the direction of theta and phi (whole spheres in GPlates)
-            // polar angle theta: from 0° to 180°(PI)
-            grid_extent[0].first = 0;
-            grid_extent[0].second = numbers::PI;
-            // azimuthal angle phi: from 0° to 360°(2*PI)
-            grid_extent[1].first = 0;
-            grid_extent[1].second = 2 * numbers::PI;
+        // min and max extent of the grid in the direction of theta and phi (whole spheres in GPlates)
+        // polar angle theta: from 0° to 180°(PI)
+        grid_extent[0].first = 0;
+        grid_extent[0].second = numbers::PI;
+        // azimuthal angle phi: from 0° to 360°(2*PI)
+        grid_extent[1].first = 0;
+        grid_extent[1].second = 2 * numbers::PI;
 
 
-            for (unsigned int i = 0; i < 2; i++)
-              {
-                if (velocities[i])
-                  delete velocities[i];
-                velocities[i] = new Functions::InterpolatedUniformGridData<2> (grid_extent,
-                                                                               table_intervals,
-                                                                               velocity_values[i]);
+        for (unsigned int i = 0; i < 2; i++)
+          {
+            if (velocities[i])
+              delete velocities[i];
+            velocities[i] = new Functions::InterpolatedUniformGridData<2> (grid_extent,
+                                                                           table_intervals,
+                                                                           velocity_values[i]);
           }
 
         AssertThrow(i == n_points,
@@ -315,25 +246,15 @@ namespace aspect
       Tensor<1,dim>
       GPlatesLookup<dim>::surface_velocity(const Point<dim> &position) const
       {
-        Tensor<1,3> internal_position;
+        Point<3> internal_position;
         if (dim == 2)
           internal_position = rotation_matrix * convert_tensor<dim,3>(position);
         else
           internal_position = convert_tensor<dim,3>(position);
 
-        // for box geometry, cartesian coordinates of the box (plane) are mapped into cartesian coordinates on a sphere
-        Point<3> internal_position_mapped;
-        if (mapping != 0)
-          internal_position_mapped = mapping->map_box_to_sphere_coordinates (internal_position);
-        else
-          for (unsigned int i = 0; i < 3; i++)
-                    {
-                      internal_position_mapped[i] = internal_position[i];
-                    }
-
-         //transform internal_position in spherical coordinates
+        //transform internal_position in spherical coordinates
         const std_cxx11::array<double,3> internal_position_in_spher_array =
-            ::aspect::Utilities::spherical_coordinates(internal_position_mapped);
+          ::aspect::Utilities::spherical_coordinates(internal_position);
 
         //remove the radius (first entry of internal_position_in_spher_array)
         Point<2> internal_position_in_spher_rad;
@@ -352,16 +273,9 @@ namespace aspect
           }
 
 
-        // for box geometry, velocities of the box (plane) are mapped into velocities on a sphere
-        Tensor<1,2> interpolated_velocity_mapped;
-        if (mapping != 0)
-          interpolated_velocity_mapped = mapping->map_box_to_sphere_velocities (interpolated_velocity);
-        else
-          interpolated_velocity_mapped = interpolated_velocity;
-
         //transform interpolated_velocity in cartesian coordinates
         Tensor<1,3> interpolated_velocity_in_cart;
-        interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity_mapped,internal_position_in_spher_array);
+        interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,internal_position_in_spher_array);
 
 
         Tensor<1,dim> output_boundary_velocity;
@@ -380,8 +294,8 @@ namespace aspect
       template <int dim>
       Tensor<1,3>
       GPlatesLookup<dim>::rotate_grid_velocity(const Tensor<1,3> &data_position,
-                                          const Tensor<1,3> &point_position,
-                                          const Tensor<1,3> &data_velocity) const
+                                               const Tensor<1,3> &point_position,
+                                               const Tensor<1,3> &data_velocity) const
       {
 
         if ((point_position-data_position).norm()/point_position.norm() < 1e-7)
@@ -469,7 +383,7 @@ namespace aspect
       template <int dim>
       Tensor<2,3>
       GPlatesLookup<dim>::rotation_matrix_from_axis (const Tensor<1,3> &rotation_axis,
-                                                const double rotation_angle) const
+                                                     const double rotation_angle) const
       {
         Tensor<2,3> rotation_matrix;
         rotation_matrix[0][0] = (1-std::cos(rotation_angle)) * rotation_axis[0]*rotation_axis[0] + std::cos(rotation_angle);
@@ -487,7 +401,7 @@ namespace aspect
       template <int dim>
       double
       GPlatesLookup<dim>::rotation_axis_from_matrix (Tensor<1,3> &rotation_axis,
-                                                const Tensor<2,3> &rotation_matrix) const
+                                                     const Tensor<2,3> &rotation_matrix) const
       {
         double rotation_angle = std::acos(0.5 * (rotation_matrix[0][0] + rotation_matrix[1][1] + rotation_matrix[2][2] - 1));
 
@@ -646,18 +560,18 @@ namespace aspect
     template <int dim>
     GPlates<dim>::GPlates ()
       :
-    current_file_number(0),
-    first_data_file_model_time(0.0),
-    first_data_file_number(0),
-    decreasing_file_order(false),
-    data_file_time_step(0.0),
-    time_weight(0.0),
-    time_dependent(true),
-    point1("0.0,0.0"),
-    point2("0.0,0.0"),
-    lithosphere_thickness(0.0),
-    lookup(),
-    old_lookup()
+      current_file_number(0),
+      first_data_file_model_time(0.0),
+      first_data_file_number(0),
+      decreasing_file_order(false),
+      data_file_time_step(0.0),
+      time_weight(0.0),
+      time_dependent(true),
+      point1("0.0,0.0"),
+      point2("0.0,0.0"),
+      lithosphere_thickness(0.0),
+      lookup(),
+      old_lookup()
     {}
 
 
@@ -678,14 +592,7 @@ namespace aspect
                 ExcMessage ("To define a plane for the 2D model the two assigned points "
                             "may not be equal."));
 
-      internal::Mapping<dim> mapping;
-
-      if ((dynamic_cast<const GeometryModel::Box<dim>*> (&this->get_geometry_model())) != 0)
-        {
-          lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo,mapping));
-          old_lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo,mapping));
-        }
-      else if ((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&this->get_geometry_model())) != 0)
+      if ((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&this->get_geometry_model())) != 0)
         {
           lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
           old_lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
@@ -693,7 +600,6 @@ namespace aspect
       else
         AssertThrow (false,ExcMessage ("This gplates plugin can only be used when using "
                                        "a spherical shell or box geometry."));
-
 
       // Set the first file number and load the first files
       current_file_number = first_data_file_number;
@@ -761,48 +667,48 @@ namespace aspect
     GPlates<dim>::update ()
     {
       if (time_dependent && (this->get_time() - first_data_file_model_time >= 0.0))
-         {
-           const double time_steps_since_start = (this->get_time() - first_data_file_model_time)
-                                                 / data_file_time_step;
-           // whether we need to update our data files. This looks so complicated
-           // because we need to catch increasing and decreasing file orders and all
-           // possible first_data_file_model_times and first_data_file_numbers.
-           const bool need_update =
-             static_cast<int> (time_steps_since_start)
-             > std::abs(current_file_number - first_data_file_number);
+        {
+          const double time_steps_since_start = (this->get_time() - first_data_file_model_time)
+                                                / data_file_time_step;
+          // whether we need to update our data files. This looks so complicated
+          // because we need to catch increasing and decreasing file orders and all
+          // possible first_data_file_model_times and first_data_file_numbers.
+          const bool need_update =
+            static_cast<int> (time_steps_since_start)
+            > std::abs(current_file_number - first_data_file_number);
 
-           if (need_update)
-             {
-               // The last file, which was tried to be loaded was
-               // number current_file_number +/- 1, because current_file_number
-               // is the file older than the current model time
-               const int old_file_number =
-                 (decreasing_file_order) ?
-                 current_file_number - 1
-                 :
-                 current_file_number + 1;
+          if (need_update)
+            {
+              // The last file, which was tried to be loaded was
+              // number current_file_number +/- 1, because current_file_number
+              // is the file older than the current model time
+              const int old_file_number =
+                (decreasing_file_order) ?
+                current_file_number - 1
+                :
+                current_file_number + 1;
 
-               //Calculate new file_number
-               current_file_number =
-                 (decreasing_file_order) ?
-                 first_data_file_number
-                 - static_cast<unsigned int> (time_steps_since_start)
-                 :
-                 first_data_file_number
-                 + static_cast<unsigned int> (time_steps_since_start);
+              //Calculate new file_number
+              current_file_number =
+                (decreasing_file_order) ?
+                first_data_file_number
+                - static_cast<unsigned int> (time_steps_since_start)
+                :
+                first_data_file_number
+                + static_cast<unsigned int> (time_steps_since_start);
 
-               const bool load_both_files = std::abs(current_file_number - old_file_number) >= 1;
+              const bool load_both_files = std::abs(current_file_number - old_file_number) >= 1;
 
-               update_data(load_both_files);
-             }
+              update_data(load_both_files);
+            }
 
-           time_weight = time_steps_since_start
-                         - std::abs(current_file_number - first_data_file_number);
+          time_weight = time_steps_since_start
+                        - std::abs(current_file_number - first_data_file_number);
 
-           Assert ((0 <= time_weight) && (time_weight <= 1),
-                   ExcMessage (
-                     "Error in set_current_time. Time_weight has to be in [0,1]"));
-         }
+          Assert ((0 <= time_weight) && (time_weight <= 1),
+                  ExcMessage (
+                    "Error in set_current_time. Time_weight has to be in [0,1]"));
+        }
     }
 
     template <int dim>
@@ -854,13 +760,13 @@ namespace aspect
     GPlates<dim>::end_time_dependence ()
     {
       // no longer consider the problem time dependent from here on out
-       // this cancels all attempts to read files at the next time steps
-       time_dependent = false;
-       // Give warning if first processor
-       this->get_pcout() << std::endl
-                         << "   Loading new data file did not succeed." << std::endl
-                         << "   Assuming constant boundary conditions for rest of model run."
-                         << std::endl << std::endl;
+      // this cancels all attempts to read files at the next time steps
+      time_dependent = false;
+      // Give warning if first processor
+      this->get_pcout() << std::endl
+                        << "   Loading new data file did not succeed." << std::endl
+                        << "   Assuming constant boundary conditions for rest of model run."
+                        << std::endl << std::endl;
     }
 
     template <int dim>
