@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011, 2012 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2015 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -38,48 +38,6 @@ namespace aspect
 
     namespace internal
     {
-
-      /**
-       * Mapping handles all kinds of mapping procedures, such as the Lambert azimuthal equal-area projection
-       * of the coordinates in a box to coordinates on a sphere and vice versa. It also handles the mapping of
-       * the velocities.
-       */
-      template <int dim>
-      class Mapping
-      {
-        public:
-          Mapping();
-
-          /**
-           * Applies the Lambert azimuthal equal-area projection to a cartesian point (X,Y,Z) on a box
-           * (technically a plane where Z is ignored) and returns a cartesian point (x,y,z) on a sphere.
-           */
-          Point<3>
-          map_box_to_sphere_coordinates (Tensor<1,3> &bposition) const;
-
-          /**
-           * Applies the Lambert azimuthal equal-area projection to a cartesian point (x,y,z) on a sphere
-           * and returns a cartesian point (X,Y) on a plane.
-           */
-          Point<2>
-          map_sphere_to_box_coordinates (Point<3> &sposition) const;
-
-
-          /**
-           * Maps the velocities on a box to velocities on a sphere.
-           */
-          Tensor<1,2>
-          map_box_to_sphere_velocities(Tensor<1,2> &bvelocities) const;
-
-          /**
-           * Maps the velocities on a sphere to velocities on a box.
-           */
-          Tensor<1,dim>
-          map_sphere_to_box_velocities(Tensor<1,dim> &svelocities) const;
-      };
-
-
-
       /**
        * GPlatesLookup handles all kinds of tasks around looking up a certain
        * velocity boundary condition from a gplates .gpml file. This class
@@ -99,15 +57,6 @@ namespace aspect
            * parameters for a 2D model.
            */
           GPlatesLookup(const Tensor<1,2> &pointone,
-                        const Tensor<1,2> &pointtwo,
-                        Mapping<dim> &mapping);
-
-          /**
-           * Initialize all members and the two pointers referring to the
-           * actual velocities. Also calculates any necessary rotation
-           * parameters for a 2D model.
-           */
-          GPlatesLookup(const Tensor<1,2> &pointone,
                         const Tensor<1,2> &pointtwo);
 
           /**
@@ -120,7 +69,6 @@ namespace aspect
                              const Tensor<1,2> &surface_point_two,
                              const ConditionalOStream &pcout) const;
 
-
           /**
            * Loads a gplates .gpml velocity file. Throws an exception if the
            * file does not exist.
@@ -129,11 +77,9 @@ namespace aspect
 
           /**
            * Returns the computed surface velocity in cartesian coordinates.
-           * Takes as input the position and current time weight.
+           * Takes as input the position.
            *
            * @param position The current position to compute velocity
-           * @param time_weight A weighting between the two current timesteps
-           * n and n+1
            */
           Tensor<1,dim> surface_velocity(const Point<dim> &position) const;
 
@@ -159,11 +105,6 @@ namespace aspect
            * the two user prescribed points. Is not used for 3D.
            */
           Tensor<2,3> rotation_matrix;
-
-          /**
-           * Pointer to an object that handles the mapping of positions and velocities.
-           */
-          std_cxx11::shared_ptr<internal::Mapping<dim> > mapping;
 
           /**
            * A function that returns the rotated vector r' that results out of
@@ -211,7 +152,7 @@ namespace aspect
 
           /**
            * Return the cartesian coordinates of a spherical surface position
-           * defined by theta (polar angle. not geographical latitude) and
+           * defined by theta (polar angle, not geographical latitude) and
            * phi.
            */
           Tensor<1,3>
