@@ -40,11 +40,7 @@ namespace aspect
     {
       /**
        * GPlatesLookup handles all kinds of tasks around looking up a certain
-       * velocity boundary condition from a gplates .gpml file. This class
-       * keeps around the contents of two sets of files, corresponding to two
-       * instances in time where GPlates provides us with data; the boundary
-       * values at one particular time are interpolated between the two
-       * currently loaded data sets.
+       * velocity boundary condition from a gplates .gpml file.
        */
       template <int dim>
       class GPlatesLookup
@@ -52,18 +48,14 @@ namespace aspect
         public:
 
           /**
-           * Initialize all members and the two pointers referring to the
-           * actual velocities. Also calculates any necessary rotation
+           * Initialize all members and calculates any necessary rotation
            * parameters for a 2D model.
            */
           GPlatesLookup(const Tensor<1,2> &pointone,
                         const Tensor<1,2> &pointtwo);
 
           /**
-           * Outputs the GPlates module information at model start. Need to be
-           * separated from Constructor because at construction time the
-           * SimulatorAccess is not initialized and only Rank 0 should give
-           * the screen output.
+           * Outputs the GPlates module information at model start.
            */
           void screen_output(const Tensor<1,2> &surface_point_one,
                              const Tensor<1,2> &surface_point_two,
@@ -103,7 +95,7 @@ namespace aspect
           /**
            * The matrix, which describes the rotation by which a 2D model
            * needs to be transformed to a plane that contains the origin and
-           * the two user prescribed points. Is not used for 3D.
+           * the two user prescribed points. Is not used for 3D models.
            */
           Tensor<2,3> rotation_matrix;
 
@@ -166,7 +158,6 @@ namespace aspect
            * @param s_velocities Surface velocities in spherical coordinates
            * (theta, phi)
            * @param s_position Position in spherical coordinates
-           * // alt:(theta,phi,radius)
            * (radius,phi,theta)
            */
           Tensor<1,3> sphere_to_cart_velocity(const Tensor<1,2> &s_velocities,
@@ -195,12 +186,6 @@ namespace aspect
           get_grid_point_position(const unsigned int theta_index,
                                   const unsigned int phi_index,
                                   const bool cartesian) const;
-
-          /**
-           * Returns the arc distance of two points on a sphere surface.
-           */
-          double
-          arc_distance(const Tensor<1,3> position_1, const Tensor<1,3> position_2) const;
 
           /**
            * Check whether the gpml file was created by GPlates1.4 or later.
@@ -297,25 +282,25 @@ namespace aspect
 
         /**
          * Time in model units (depends on other model inputs) between two
-         * data files.
+         * velocity files.
          */
         double data_file_time_step;
 
         /**
-         * Weight between data file n and n+1 while the current time is
+         * Weight between velocity file n and n+1 while the current time is
          * between the two values t(n) and t(n+1).
          */
         double time_weight;
 
         /**
          * State whether we have time_dependent boundary conditions. Switched
-         * off after finding no more data files to suppress attempts to read
+         * off after finding no more velocity files to suppress attempts to read
          * in new files.
          */
         bool time_dependent;
 
         /**
-         * Directory in which the gplates velocity are present.
+         * Directory in which the gplates velocity files are present.
          */
         std::string data_directory;
 
@@ -350,7 +335,9 @@ namespace aspect
         /**
          * Determines the depth of the lithosphere. The user might want to apply
          * the GPlates velocities not only at the surface of the model, but also
-         * in the whole lithosphere.
+         * in the whole lithosphere. At every side boundary point with a depth
+         * smaller than this value (and thus being in the lithosphere), the
+         * surface velocity will be described.
          */
         double lithosphere_thickness;
 
@@ -367,7 +354,10 @@ namespace aspect
         std_cxx11::shared_ptr<internal::GPlatesLookup<dim> > old_lookup;
 
         /**
-         * Handles the update of the velocity data in lookup.
+         * Handles the update of the velocity data in lookup. The input
+         * parameter makes sure that both velocity files (n and n+1) can be
+         * reloaded if the model time step is larger than the velocity file
+         * time step.
          */
         void
         update_data (const bool reload_both_files);
