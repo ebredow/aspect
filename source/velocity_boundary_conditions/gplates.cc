@@ -33,6 +33,7 @@
 #include <boost/property_tree/ptree.hpp>
 
 #include <aspect/geometry_model/spherical_shell.h>
+#include <aspect/geometry_model/chunk.h>
 
 
 namespace aspect
@@ -181,7 +182,7 @@ namespace aspect
         delta_phi   = 2*numbers::PI / n_phi;
 
         /**
-         * Tables which contain the velocities
+         * Two tables which contain the velocities at every point. ( is for the theta component, is for the phi component.)
          */
         std::vector<Table<2,double> > velocity_values(2,Table<2,double>(n_theta,n_phi));
 
@@ -273,8 +274,7 @@ namespace aspect
           }
 
         //transform interpolated_velocity in cartesian coordinates
-        Tensor<1,3> interpolated_velocity_in_cart;
-        interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,internal_position_in_spher_array);
+        const Tensor<1,3> interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,internal_position_in_spher_array);
 
         Tensor<1,dim> output_boundary_velocity;
 
@@ -327,22 +327,6 @@ namespace aspect
         else
           return spherical_position;
       }
-
-      template <int dim>
-      double
-      GPlatesLookup<dim>::arc_distance(const Tensor<1,3> position_1, const Tensor<1,3> position_2) const
-      {
-        const double cartesian_distance = (position_1-position_2).norm();
-
-        Assert((position_1.norm() - position_2.norm())/position_1.norm() < 1e-14,
-               ExcMessage("Error in velocity boundary module interpolation. "
-                          "Radius of different surface points is not equal."));
-
-        const double average_radius = (position_1.norm() + position_2.norm())/2;
-        const double arc_distance =  average_radius * 2.0 * std::asin(cartesian_distance/(2*average_radius));
-        return arc_distance;
-      }
-
 
       template <int dim>
       Tensor<1,3>
@@ -590,14 +574,15 @@ namespace aspect
                 ExcMessage ("To define a plane for the 2D model the two assigned points "
                             "may not be equal."));
 
-      if ((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&this->get_geometry_model())) != 0)
+      if (((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&this->get_geometry_model())) != 0)
+         || ((dynamic_cast<const GeometryModel::Chunk<dim>*> (&this->get_geometry_model())) != 0))
         {
           lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
           old_lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
         }
       else
         AssertThrow (false,ExcMessage ("This gplates plugin can only be used when using "
-                                       "a spherical shell or box geometry."));
+                                       "a spherical shell or chunk geometry."));
 
       // Set the first file number and load the first files
       current_file_number = first_data_file_number;
@@ -762,7 +747,7 @@ namespace aspect
       time_dependent = false;
       // Give warning if first processor
       this->get_pcout() << std::endl
-                        << "   Loading new data file did not succeed." << std::endl
+                        << "   Loading new velocity file did not succeed." << std::endl
                         << "   Assuming constant boundary conditions for rest of model run."
                         << std::endl << std::endl;
     }
@@ -892,7 +877,7 @@ namespace aspect
           if (this->convert_output_to_years())
             {
               data_file_time_step        *= year_in_seconds;
-              first_data_file_model_time *= year_in_seconds;;
+              first_data_file_model_time *= year_in_seconds;
             }
         }
         prm.leave_subsection();
