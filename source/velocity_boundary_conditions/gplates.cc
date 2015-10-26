@@ -575,7 +575,7 @@ namespace aspect
                             "may not be equal."));
 
       if (((dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&this->get_geometry_model())) != 0)
-         || ((dynamic_cast<const GeometryModel::Chunk<dim>*> (&this->get_geometry_model())) != 0))
+          || ((dynamic_cast<const GeometryModel::Chunk<dim>*> (&this->get_geometry_model())) != 0))
         {
           lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
           old_lookup.reset(new internal::GPlatesLookup<dim>(pointone,pointtwo));
