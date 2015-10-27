@@ -182,7 +182,10 @@ namespace aspect
         delta_phi   = 2*numbers::PI / n_phi;
 
         /**
-         * Two tables which contain the velocities at every point. ( is for the theta component, is for the phi component.)
+         * Two tables (one for the theta and one for the phi component)
+         * which contain the velocities at every point.
+         * velocity_values[0] is the table for the theta component, whereas
+         * velocity_values[1] is the table for the phi component.
          */
         std::vector<Table<2,double> > velocity_values(2,Table<2,double>(n_theta,n_phi));
 
@@ -214,12 +217,13 @@ namespace aspect
             i++;
           }
 
-
         // number of intervals in the direction of theta and phi
         std_cxx11::array<unsigned int,2> table_intervals;
         table_intervals[0] = n_theta - 1;
         table_intervals[1] = n_phi - 1;
 
+        // Min and Max coordinates in data file
+        std_cxx11::array<std::pair<double,double>,2> grid_extent;
 
         // min and max extent of the grid in the direction of theta and phi (whole spheres in GPlates)
         // polar angle theta: from 0° to 180°(PI)
@@ -228,7 +232,6 @@ namespace aspect
         // azimuthal angle phi: from 0° to 360°(2*PI)
         grid_extent[1].first = 0;
         grid_extent[1].second = 2 * numbers::PI;
-
 
         for (unsigned int i = 0; i < 2; i++)
           {
@@ -253,11 +256,12 @@ namespace aspect
         else
           internal_position = convert_tensor<dim,3>(position);
 
-        //transform internal_position in spherical coordinates
+        // transform internal_position in spherical coordinates
         const std_cxx11::array<double,3> internal_position_in_spher_array =
           ::aspect::Utilities::spherical_coordinates(internal_position);
 
-        //remove the radius (first entry of internal_position_in_spher_array)
+        // remove the radius (first entry of internal_position_in_spher_array) and
+        // re-sort the components of the spherical position from [r,phi,theta] to [theta, phi]
         Point<2> internal_position_in_spher_rad;
 
         for (unsigned int i = 1; i < 3; i++)

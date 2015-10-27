@@ -83,11 +83,6 @@ namespace aspect
           std::vector<Functions::InterpolatedUniformGridData<2> *> velocities;
 
           /**
-           * Min and Max coordinates in data file
-           */
-          std_cxx11::array<std::pair<double,double>,2> grid_extent;
-
-          /**
            * Distances between adjacent point in the Lat/Long grid
            */
           double delta_phi, delta_theta;
@@ -95,7 +90,8 @@ namespace aspect
           /**
            * The matrix, which describes the rotation by which a 2D model
            * needs to be transformed to a plane that contains the origin and
-           * the two user prescribed points. Is not used for 3D models.
+           * the two user prescribed points. Is not necessary and therefore
+           * not used for 3D models.
            */
           Tensor<2,3> rotation_matrix;
 
@@ -336,8 +332,8 @@ namespace aspect
          * Determines the depth of the lithosphere. The user might want to apply
          * the GPlates velocities not only at the surface of the model, but also
          * in the whole lithosphere. At every side boundary point with a depth
-         * smaller than this value (and thus being in the lithosphere), the
-         * surface velocity will be described.
+         * smaller than this value (and thus being located in the lithosphere),
+         * the surface velocity will be described.
          */
         double lithosphere_thickness;
 
