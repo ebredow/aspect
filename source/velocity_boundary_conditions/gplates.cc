@@ -588,6 +588,9 @@ namespace aspect
         AssertThrow (false,ExcMessage ("This gplates plugin can only be used when using "
                                        "a spherical shell or chunk geometry."));
 
+      // display the GPlates module information at model start.
+      lookup->screen_output(pointone, pointtwo, this->get_pcout());
+
       // Set the first file number and load the first files
       current_file_number = first_data_file_number;
 
