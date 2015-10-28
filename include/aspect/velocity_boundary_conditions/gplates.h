@@ -96,16 +96,6 @@ namespace aspect
           Tensor<2,3> rotation_matrix;
 
           /**
-           * A function that returns the rotated vector r' that results out of
-           * a rotation from vector r around a specified rotation_axis by an
-           * defined angle
-           */
-          Tensor<1,3>
-          rotate_around_axis (const Tensor<1,3> &position,
-                              const Tensor<1,3> &rotation_axis,
-                              const double angle) const;
-
-          /**
            * A function that returns the corresponding paraview angles for a
            * rotation described by a rotation matrix. These differ from the
            * usually used euler angles by assuming a rotation around the
@@ -158,30 +148,6 @@ namespace aspect
            */
           Tensor<1,3> sphere_to_cart_velocity(const Tensor<1,2> &s_velocities,
                                               const std_cxx11::array<double,3> &s_position) const;
-
-
-          /**
-           * Returns a velocity vector that is rotated to be tangential to the
-           * sphere surface at point position
-           *
-           * @param data_position Position of the velocity data point
-           * @param point_position Position of the current evaluation point to
-           * which the velocity will be rotated
-           * @param data_velocity Unrotated velocity vector
-           */
-          Tensor<1,3>
-          rotate_grid_velocity(const Tensor<1,3> &data_position,
-                               const Tensor<1,3> &point_position,
-                               const Tensor<1,3> &data_velocity) const;
-
-          /**
-           * Returns the position (cartesian or spherical depending on last
-           * argument) of a data point with a given theta,phi index.
-           */
-          Tensor<1,3>
-          get_grid_point_position(const unsigned int theta_index,
-                                  const unsigned int phi_index,
-                                  const bool cartesian) const;
 
           /**
            * Check whether the gpml file was created by GPlates1.4 or later.
