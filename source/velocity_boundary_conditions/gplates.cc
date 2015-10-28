@@ -292,56 +292,6 @@ namespace aspect
         return output_boundary_velocity;
       }
 
-
-      template <int dim>
-      Tensor<1,3>
-      GPlatesLookup<dim>::rotate_grid_velocity(const Tensor<1,3> &data_position,
-                                               const Tensor<1,3> &point_position,
-                                               const Tensor<1,3> &data_velocity) const
-      {
-
-        if ((point_position-data_position).norm()/point_position.norm() < 1e-7)
-          return data_velocity;
-        else
-          {
-            Tensor<1,3> local_rotation_axis = cross_product_3d(data_position,point_position);
-            local_rotation_axis /= local_rotation_axis.norm();
-
-            // Calculate the rotation angle from the inner product rule
-            const double local_rotation_angle = std::acos(data_position*point_position);
-
-            const Tensor<1,3> point_velocity = rotate_around_axis(data_velocity,local_rotation_axis,local_rotation_angle);
-
-            return point_velocity;
-          }
-      }
-
-
-      template <int dim>
-      Tensor<1,3>
-      GPlatesLookup<dim>::get_grid_point_position(const unsigned int theta_index, const unsigned int phi_index, const bool cartesian) const
-      {
-        Tensor<1,3> spherical_position;
-        spherical_position[0] = theta_index * delta_theta;
-        spherical_position[1] = phi_index * delta_phi;
-        spherical_position[2] = 1.0;
-
-        if (cartesian)
-          return cartesian_surface_coordinates(spherical_position);
-        else
-          return spherical_position;
-      }
-
-      template <int dim>
-      Tensor<1,3>
-      GPlatesLookup<dim>::rotate_around_axis (const Tensor<1,3> &position, const Tensor<1,3> &rotation_axis, const double angle) const
-      {
-        Tensor<1,3> cross = cross_product_3d(rotation_axis,position);
-        const Tensor<1,3> newpos = (1-std::cos(angle)) * rotation_axis*(rotation_axis*position) +
-                                   std::cos(angle) * position + std::sin(angle) * cross;
-        return newpos;
-      }
-
       template <int dim>
       Tensor<1,3>
       GPlatesLookup<dim>::cartesian_surface_coordinates(const Tensor<1,3> &sposition) const
