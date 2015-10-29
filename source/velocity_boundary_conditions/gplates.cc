@@ -252,9 +252,9 @@ namespace aspect
       {
         Point<3> internal_position;
         if (dim == 2)
-          internal_position = rotation_matrix * convert_tensor<dim,3>(position);
+          internal_position = Point<3> (rotation_matrix * convert_tensor<dim,3>(position));
         else
-          internal_position = convert_tensor<dim,3>(position);
+          internal_position = Point<3> (convert_tensor<dim,3>(position));
 
         // transform internal_position in spherical coordinates
         const std_cxx11::array<double,3> internal_position_in_spher_array =
