@@ -20,7 +20,7 @@
    Assuming constant boundary conditions for rest of model run.
 
 Number of active cells: 768 (on 4 levels)
-Number of degrees of freedom: 10.656 (6.528+864+3.264)
+Number of degrees of freedom: 10,656 (6,528+864+3,264)
 
 *** Timestep 0:  t=0 years
    Solving temperature system... 0 iterations.
