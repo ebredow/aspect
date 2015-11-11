@@ -161,7 +161,8 @@ namespace aspect
 
     /**
      * A class that implements prescribed velocity boundary conditions
-     * determined from a GPlates input files.
+     * determined from GPlates input files. The interpolation in time is
+     * performed between two objects of the GPlatesLookup class.
      *
      * @ingroup VelocityBoundaryConditionsModels
      */
