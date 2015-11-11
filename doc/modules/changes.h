@@ -6,6 +6,15 @@
  *
  *
  * <ol>
+ * <li> Changed: GPlates plugin restructured in the style of the AsciiData
+ * Plugin. Interpolation now in spherical coordinates instead of Cartesian
+ * coordinates. Changes in the input parameters: "Time step" now called "Data
+ * file time step", "Velocity file start time" now called "First data file
+ * model time", "Interpolation width" does not exist any more, new parameters
+ * "First data file number", "Decreasing file order", "Lithosphere thickness".
+ * <br>
+ * (Eva Bredow, Rene Gassmoeller, 2015/11/11)
+ * 
  * <li> New: The tolerance of the preconditioners of the A and S block 
  * are now available as parameters in the prm file. There is now also 
  * a section added to the manual on how to use these parameters to 
