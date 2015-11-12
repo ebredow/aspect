@@ -6,6 +6,28 @@
  *
  *
  * <ol>
+ * <li> Changed: GPlates plugin restructured in the style of the AsciiData
+ * Plugin. Interpolation now in spherical coordinates instead of Cartesian
+ * coordinates. Changes in the input parameters: "Time step" now called "Data
+ * file time step", "Velocity file start time" now called "First data file
+ * model time", "Interpolation width" does not exist any more, new parameters
+ * "First data file number", "Decreasing file order", "Lithosphere thickness".
+ * <br>
+ * (Eva Bredow, Rene Gassmoeller, 2015/11/11)
+ * 
+ * <li> New: The tolerance of the preconditioners of the A and S block 
+ * are now available as parameters in the prm file. There is now also 
+ * a section added to the manual on how to use these parameters to 
+ * make ASPECT in certain situation faster.
+ * <br>
+ * (Menno Fraters, 2015/11/08)
+ *
+ * <li> Changed: The DynamicTopography postprocessor and visualization
+ * plugins now use the more accurate Gaussian quadrature rule for evaluating
+ * cell averages of the surface stress.
+ * <br>
+ * (Ian Rose, 2015/11/04)
+ *
  * <li> New: Add depth postprocessor which visually outputs the 
  * depth for all points inside the domain, as determined by the 
  * geometry model.
