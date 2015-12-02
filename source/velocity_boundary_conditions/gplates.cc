@@ -21,7 +21,6 @@
 
 #include <aspect/global.h>
 #include <aspect/velocity_boundary_conditions/gplates.h>
-#include <aspect/geometry_model/spherical_shell.h>
 #include <aspect/utilities.h>
 
 #include <deal.II/base/utilities.h>
@@ -714,7 +713,16 @@ namespace aspect
     GPlates<dim>::
     boundary_velocity (const Point<dim> &position) const
     {
-      if ((this->get_time() - first_data_file_model_time >= 0.0) && (this->get_geometry_model().depth(position) <= lithosphere_thickness))
+      // We compare the depth of the current point to the lithosphere thickness.
+      // The depth is calculated using squares, sums, square-roots and differences
+      // of large numbers, and we possibly end up with a very small number close to
+      // the surface, thus rounding errors can get quite large. We therefore
+      // compare the depth to lithosphere_thickness plus a magic number, which we
+      // choose as 1e-7 times the maximal model depth, because we safely assume no
+      // model will have more than 1e7 quadrature points in depth direction.
+      const double magic_number = 1e-7 * this->get_geometry_model().maximal_depth();
+
+      if ((this->get_time() - first_data_file_model_time >= 0.0) && (this->get_geometry_model().depth(position) <= lithosphere_thickness + magic_number))
         {
           const Tensor<1,dim> data = lookup->surface_velocity(position);
 
