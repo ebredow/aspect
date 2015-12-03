@@ -262,7 +262,7 @@ namespace aspect
         // for correct interpolation in spherical coordinates close to the poles, the longitude
         // for all points near the poles is set to zero (according to the usual GPlates routine)
         if ((internal_position_in_spher_coord[2] <= delta_theta) || (internal_position_in_spher_coord[2] >= numbers::PI - delta_theta))
-        internal_position_in_spher_coord[1] = 0.0;
+          internal_position_in_spher_coord[1] = 0.0;
 
         // remove the radius (first entry of internal_position_in_spher_array) and
         // re-sort the components of the spherical position from [r,phi,theta] to [theta, phi]
