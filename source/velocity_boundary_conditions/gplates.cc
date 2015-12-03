@@ -256,16 +256,21 @@ namespace aspect
           internal_position = Point<3> (convert_tensor<dim,3>(position));
 
         // transform internal_position in spherical coordinates
-        const std_cxx11::array<double,3> internal_position_in_spher_array =
+        std_cxx11::array<double,3> internal_position_in_spher_coord =
           ::aspect::Utilities::spherical_coordinates(internal_position);
+
+        // for correct interpolation in spherical coordinates close to the poles, the longitude
+        // for all points near the poles is set to zero (according to the usual GPlates routine)
+        if ((internal_position_in_spher_coord[2] <= delta_theta) || (internal_position_in_spher_coord[2] >= numbers::PI - delta_theta))
+        internal_position_in_spher_coord[1] = 0.0;
 
         // remove the radius (first entry of internal_position_in_spher_array) and
         // re-sort the components of the spherical position from [r,phi,theta] to [theta, phi]
-        Point<2> internal_position_in_spher_rad;
+        Point<2> internal_position_in_spher_coord_modified;
 
-        for (unsigned int i = 1; i < 3; i++)
+        for (unsigned int i = 0; i < 2; i++)
           {
-            internal_position_in_spher_rad[i-1] = internal_position_in_spher_array[3-i];
+            internal_position_in_spher_coord_modified[i] = internal_position_in_spher_coord[2-i];
           }
 
         // Main work, interpolate velocity at this point
@@ -273,11 +278,11 @@ namespace aspect
 
         for (unsigned int i = 0; i < 2; i++)
           {
-            interpolated_velocity[i] = velocities[i]->value(internal_position_in_spher_rad);
+            interpolated_velocity[i] = velocities[i]->value(internal_position_in_spher_coord_modified);
           }
 
         //transform interpolated_velocity in cartesian coordinates
-        const Tensor<1,3> interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,internal_position_in_spher_array);
+        const Tensor<1,3> interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,internal_position_in_spher_coord);
 
         Tensor<1,dim> output_boundary_velocity;
 
@@ -720,6 +725,8 @@ namespace aspect
       // compare the depth to lithosphere_thickness plus a magic number, which we
       // choose as 1e-7 times the maximal model depth, because we safely assume no
       // model will have more than 1e7 quadrature points in depth direction.
+      // Without the magic number it may unintentionally happen that the GPlates
+      // velocities are not prescribed at every point on the surface.
       const double magic_number = 1e-7 * this->get_geometry_model().maximal_depth();
 
       if ((this->get_time() - first_data_file_model_time >= 0.0) && (this->get_geometry_model().depth(position) <= lithosphere_thickness + magic_number))
@@ -797,9 +804,9 @@ namespace aspect
           prm.declare_entry ("Point two", "1.570796,1.570796",
                              Patterns::Anything (),
                              "Point that determines the plane in which a 2D model lies in. Has to be in the format 'a,b' where a and b are theta (polar angle)  and phi in radians.");
-          prm.declare_entry ("Lithosphere thickness", "0",
+          prm.declare_entry ("Lithosphere thickness", "100000",
                              Patterns::Double (0),
-                             "Determines the depth of the lithosphere, so that the GPlates velocities can be applied there "
+                             "Determines the depth of the lithosphere, so that the GPlates velocities can be applied at the sides of the model "
                              "as well as at the surface.");
         }
         prm.leave_subsection();
