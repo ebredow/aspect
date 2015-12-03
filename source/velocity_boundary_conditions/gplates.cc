@@ -256,21 +256,64 @@ namespace aspect
           internal_position = Point<3> (convert_tensor<dim,3>(position));
 
         // transform internal_position in spherical coordinates
-        std_cxx11::array<double,3> internal_position_in_spher_coord =
+        std_cxx11::array<double,3> spherical_point =
           ::aspect::Utilities::spherical_coordinates(internal_position);
 
-        // for correct interpolation in spherical coordinates close to the poles, the longitude
-        // for all points near the poles is set to zero (according to the usual GPlates routine)
-        if ((internal_position_in_spher_coord[2] <= delta_theta) || (internal_position_in_spher_coord[2] >= numbers::PI - delta_theta))
-          internal_position_in_spher_coord[1] = 0.0;
+        Tensor<1,dim> output_boundary_velocity;
+        // Handle all points that are not close to the poles
+        if ((spherical_point[2] >= delta_theta) && (spherical_point[2] <= numbers::PI - delta_theta))
+          {
+            output_boundary_velocity = cartesian_velocity_from_spherical_point(spherical_point);
+          }
 
+        // The longitude of data points at the poles is set to zero (according to the internal
+        // GPlates routine). Because we interpolate velocities before converting them to the
+        // cartesian coordinate system, we need to evaluate them twice: First at the poles,
+        // and then at the latitude of the first data point that is not at the poles.
+        // Afterwards we average the two velocities to the the real position.
+        else if (spherical_point[2] < delta_theta)
+          {
+            const double theta = spherical_point[2];
+            spherical_point[2] = delta_theta;
+            const Tensor<1,dim> first_velocity = cartesian_velocity_from_spherical_point(spherical_point);
+
+            spherical_point[1] = 0.0;
+            spherical_point[2] = 0.0;
+            const Tensor<1,dim> polar_velocity = cartesian_velocity_from_spherical_point(spherical_point);
+
+            output_boundary_velocity = (theta / delta_theta) * first_velocity
+                + (1.0 - theta / delta_theta) * polar_velocity;
+          }
+        else if (spherical_point[2] > numbers::PI - delta_theta)
+          {
+            const double theta = spherical_point[2];
+            spherical_point[2] = numbers::PI - delta_theta;
+            const Tensor<1,dim> first_velocity = cartesian_velocity_from_spherical_point(spherical_point);
+
+            spherical_point[1] = 0.0;
+            spherical_point[2] = numbers::PI;
+            const Tensor<1,dim> polar_velocity = cartesian_velocity_from_spherical_point(spherical_point);
+
+            output_boundary_velocity = ((numbers::PI - theta) / delta_theta) * first_velocity
+                + (1.0 - (numbers::PI - theta) / delta_theta) * polar_velocity;
+          }
+        else
+          Assert(false,ExcInternalError());
+
+        return output_boundary_velocity;
+      }
+
+      template <int dim>
+      Tensor<1,dim>
+      GPlatesLookup<dim>::cartesian_velocity_from_spherical_point(const std_cxx11::array<double,3> &spherical_point) const
+      {
         // remove the radius (first entry of internal_position_in_spher_array) and
         // re-sort the components of the spherical position from [r,phi,theta] to [theta, phi]
         Point<2> internal_position_in_spher_coord_modified;
 
         for (unsigned int i = 0; i < 2; i++)
           {
-            internal_position_in_spher_coord_modified[i] = internal_position_in_spher_coord[2-i];
+            internal_position_in_spher_coord_modified[i] = spherical_point[2-i];
           }
 
         // Main work, interpolate velocity at this point
@@ -282,7 +325,7 @@ namespace aspect
           }
 
         //transform interpolated_velocity in cartesian coordinates
-        const Tensor<1,3> interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,internal_position_in_spher_coord);
+        const Tensor<1,3> interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,spherical_point);
 
         Tensor<1,dim> output_boundary_velocity;
 
@@ -314,9 +357,11 @@ namespace aspect
       {
         Tensor<1,3> velocity;
 
-        velocity[0] = -1.0 * s_velocities[1] * std::sin(s_position[1]) + s_velocities[0]*std::cos(s_position[2])*std::cos(s_position[1]);
-        velocity[1] = s_velocities[1]*std::cos(s_position[1])+s_velocities[0]*std::cos(s_position[2])*std::sin(s_position[1]);
-        velocity[2] = -1.0*s_velocities[0]*std::sin(s_position[2]);
+        velocity[0] = std::cos(s_position[2]) * std::cos(s_position[1]) * s_velocities[0]
+                     - 1.0 * std::sin(s_position[1]) * s_velocities[1];
+        velocity[1] = std::cos(s_position[2]) * std::sin(s_position[1]) * s_velocities[0]
+                     + std::cos(s_position[1]) * s_velocities[1];
+        velocity[2] = -1.0 * std::sin(s_position[2]) * s_velocities[0];
         return velocity;
       }
 

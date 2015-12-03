@@ -137,6 +137,9 @@ namespace aspect
           Tensor<1,3>
           cartesian_surface_coordinates(const Tensor<1,3> &sposition) const;
 
+          Tensor<1,dim>
+          cartesian_velocity_from_spherical_point(const std_cxx11::array<double,3> &spherical_point) const;
+
           /**
            * Returns cartesian velocities calculated from surface velocities
            * and position in spherical coordinates

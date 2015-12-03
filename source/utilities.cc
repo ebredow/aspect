@@ -52,9 +52,18 @@ namespace aspect
       std_cxx11::array<double,dim> scoord;
 
       scoord[0] = position.norm(); // R
-      scoord[1] = std::atan2(position(1),position(0)); // Phi
+
+      // Phi, we define phi at the poles and the origin as 0.0
+      if ((std::abs(position(1)) <= std::numeric_limits<double>::min())
+          && (std::abs(position(0)) <= std::numeric_limits<double>::min()))
+        scoord[1] = 0.0;
+      else
+        scoord[1] = std::atan2(position(1),position(0));
+
       if (scoord[1] < 0.0)
         scoord[1] += 2.0*numbers::PI; // correct phi to [0,2*pi]
+
+      // Theta, we define theta at the origin as 0.0
       if (dim==3)
         {
           if (scoord[0] > std::numeric_limits<double>::min())
