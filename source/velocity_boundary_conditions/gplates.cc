@@ -27,7 +27,7 @@
 
 #include <fstream>
 #include <iostream>
-#include <cmath>
+
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
@@ -106,9 +106,9 @@ namespace aspect
       }
 
       template <int dim>
-      void GPlatesLookup<dim>::screen_output(const Tensor<1,2> &surface_point_one,
-                                             const Tensor<1,2> &surface_point_two,
-                                             const ConditionalOStream &pcout) const
+      std::string
+      GPlatesLookup<dim>::screen_output(const Tensor<1,2> &surface_point_one,
+                                        const Tensor<1,2> &surface_point_two) const
       {
         const Tensor<1,3> point_one = cartesian_surface_coordinates(convert_tensor<2,3>(surface_point_one));
         const Tensor<1,3> point_two = cartesian_surface_coordinates(convert_tensor<2,3>(surface_point_two));
@@ -133,7 +133,7 @@ namespace aspect
                    << "   Input point 2 normalized cartesian coordinates: " << point_two  << std::endl
                    << "   Input point 2 rotated model coordinates: " << transpose(rotation_matrix) * point_two << std::endl
                    << std::endl <<  std::setprecision(2)
-                   << "   Model will be rotated by " << -rotation_angle*180/numbers::PI
+                   << "   Model will be rotated by " << -rotation_angle * 180.0 / numbers::PI
                    << " degrees around axis " << rotation_axis << std::endl
                    << "   The ParaView rotation angles are: " << angles[0] << " " << angles [1] << " " << angles[2] << std::endl
                    << "   The inverse ParaView rotation angles are: " << back_angles[0] << " " << back_angles [1] << " " << back_angles[2]
@@ -141,15 +141,14 @@ namespace aspect
                    << std::endl;
           }
 
-        pcout << output.str();
+        return output.str();
       }
 
       template <int dim>
       void
       GPlatesLookup<dim>::load_file(const std::string &filename)
       {
-        using boost::property_tree::ptree;
-        ptree pt;
+        boost::property_tree::ptree pt;
 
         // Check whether file exists, we do not want to throw
         // an exception in case it does not, because it could be by purpose
@@ -203,7 +202,7 @@ namespace aspect
         char sep;
         Tensor<1,2> spherical_velocities;
 
-        while (in >> spherical_velocities[0]>> sep >> spherical_velocities[1])
+        while (in >> spherical_velocities[0] >> sep >> spherical_velocities[1])
           {
             const double cmyr_si = 0.01/year_in_seconds;
 
@@ -249,11 +248,11 @@ namespace aspect
       Tensor<1,dim>
       GPlatesLookup<dim>::surface_velocity(const Point<dim> &position) const
       {
-        Point<3> internal_position;
-        if (dim == 2)
-          internal_position = Point<3> (rotation_matrix * convert_tensor<dim,3>(position));
-        else
-          internal_position = Point<3> (convert_tensor<dim,3>(position));
+        const Point<3> internal_position ((dim == 2)
+                                          ?
+                                          rotation_matrix * convert_tensor<dim,3>(position)
+                                          :
+                                          convert_tensor<dim,3>(position));
 
         // transform internal_position in spherical coordinates
         std_cxx11::array<double,3> spherical_point =
@@ -263,7 +262,7 @@ namespace aspect
         // Handle all points that are not close to the poles
         if ((spherical_point[2] >= delta_theta) && (spherical_point[2] <= numbers::PI - delta_theta))
           {
-            output_boundary_velocity = cartesian_velocity_from_spherical_point(spherical_point);
+            output_boundary_velocity = cartesian_velocity_at_surface_point(spherical_point);
           }
 
         // The longitude of data points at the poles is set to zero (according to the internal
@@ -275,27 +274,27 @@ namespace aspect
           {
             const double theta = spherical_point[2];
             spherical_point[2] = delta_theta;
-            const Tensor<1,dim> first_velocity = cartesian_velocity_from_spherical_point(spherical_point);
+            const Tensor<1,dim> first_velocity = cartesian_velocity_at_surface_point(spherical_point);
 
             spherical_point[1] = 0.0;
             spherical_point[2] = 0.0;
-            const Tensor<1,dim> polar_velocity = cartesian_velocity_from_spherical_point(spherical_point);
+            const Tensor<1,dim> polar_velocity = cartesian_velocity_at_surface_point(spherical_point);
 
             output_boundary_velocity = (theta / delta_theta) * first_velocity
-                + (1.0 - theta / delta_theta) * polar_velocity;
+                                       + (1.0 - theta / delta_theta) * polar_velocity;
           }
         else if (spherical_point[2] > numbers::PI - delta_theta)
           {
             const double theta = spherical_point[2];
             spherical_point[2] = numbers::PI - delta_theta;
-            const Tensor<1,dim> first_velocity = cartesian_velocity_from_spherical_point(spherical_point);
+            const Tensor<1,dim> first_velocity = cartesian_velocity_at_surface_point(spherical_point);
 
             spherical_point[1] = 0.0;
             spherical_point[2] = numbers::PI;
-            const Tensor<1,dim> polar_velocity = cartesian_velocity_from_spherical_point(spherical_point);
+            const Tensor<1,dim> polar_velocity = cartesian_velocity_at_surface_point(spherical_point);
 
             output_boundary_velocity = ((numbers::PI - theta) / delta_theta) * first_velocity
-                + (1.0 - (numbers::PI - theta) / delta_theta) * polar_velocity;
+                                       + (1.0 - (numbers::PI - theta) / delta_theta) * polar_velocity;
           }
         else
           Assert(false,ExcInternalError());
@@ -305,36 +304,27 @@ namespace aspect
 
       template <int dim>
       Tensor<1,dim>
-      GPlatesLookup<dim>::cartesian_velocity_from_spherical_point(const std_cxx11::array<double,3> &spherical_point) const
+      GPlatesLookup<dim>::cartesian_velocity_at_surface_point(const std_cxx11::array<double,3> &spherical_point) const
       {
-        // remove the radius (first entry of internal_position_in_spher_array) and
-        // re-sort the components of the spherical position from [r,phi,theta] to [theta, phi]
-        Point<2> internal_position_in_spher_coord_modified;
-
-        for (unsigned int i = 0; i < 2; i++)
-          {
-            internal_position_in_spher_coord_modified[i] = spherical_point[2-i];
-          }
+        // Re-sort the components of the spherical position from [r,phi,theta] to [theta, phi]
+        const Point<2> lookup_coordinates(spherical_point[2],spherical_point[1]);
 
         // Main work, interpolate velocity at this point
         Tensor<1,2> interpolated_velocity;
 
         for (unsigned int i = 0; i < 2; i++)
-          {
-            interpolated_velocity[i] = velocities[i]->value(internal_position_in_spher_coord_modified);
-          }
+          interpolated_velocity[i] = velocities[i]->value(lookup_coordinates);
 
-        //transform interpolated_velocity in cartesian coordinates
+        // Transform interpolated_velocity in cartesian coordinates
         const Tensor<1,3> interpolated_velocity_in_cart = sphere_to_cart_velocity(interpolated_velocity,spherical_point);
 
-        Tensor<1,dim> output_boundary_velocity;
-
-        if (dim == 2)
-          // convert_tensor conveniently also handles the projection to the 2D plane by
-          // omitting the z-component of velocity (since the 2D model lies in the x-y plane).
-          output_boundary_velocity = convert_tensor<3,dim>(transpose(rotation_matrix) * interpolated_velocity_in_cart);
-        else
-          output_boundary_velocity = convert_tensor<3,dim>(interpolated_velocity_in_cart);
+        // Convert_tensor conveniently also handles the projection to the 2D plane by
+        // omitting the z-component of velocity (since the 2D model lies in the x-y plane).
+        const Tensor<1,dim> output_boundary_velocity = (dim == 2)
+                                                       ?
+                                                       convert_tensor<3,dim>(transpose(rotation_matrix) * interpolated_velocity_in_cart)
+                                                       :
+                                                       convert_tensor<3,dim>(interpolated_velocity_in_cart);
 
         return output_boundary_velocity;
       }
@@ -358,10 +348,11 @@ namespace aspect
         Tensor<1,3> velocity;
 
         velocity[0] = std::cos(s_position[2]) * std::cos(s_position[1]) * s_velocities[0]
-                     - 1.0 * std::sin(s_position[1]) * s_velocities[1];
+                      - 1.0 * std::sin(s_position[1]) * s_velocities[1];
         velocity[1] = std::cos(s_position[2]) * std::sin(s_position[1]) * s_velocities[0]
-                     + std::cos(s_position[1]) * s_velocities[1];
+                      + std::cos(s_position[1]) * s_velocities[1];
         velocity[2] = -1.0 * std::sin(s_position[2]) * s_velocities[0];
+
         return velocity;
       }
 
@@ -588,7 +579,7 @@ namespace aspect
                                        "a spherical shell or chunk geometry."));
 
       // display the GPlates module information at model start.
-      lookup->screen_output(pointone, pointtwo, this->get_pcout());
+      this->get_pcout() << lookup->screen_output(pointone, pointtwo);
 
       // Set the first file number and load the first files
       current_file_number = first_data_file_number;

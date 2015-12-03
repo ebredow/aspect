@@ -57,9 +57,9 @@ namespace aspect
           /**
            * Outputs the GPlates module information at model start.
            */
-          void screen_output(const Tensor<1,2> &surface_point_one,
-                             const Tensor<1,2> &surface_point_two,
-                             const ConditionalOStream &pcout) const;
+          std::string
+          screen_output(const Tensor<1,2> &surface_point_one,
+                        const Tensor<1,2> &surface_point_two) const;
 
           /**
            * Loads a gplates .gpml velocity file. Throws an exception if the
@@ -137,8 +137,12 @@ namespace aspect
           Tensor<1,3>
           cartesian_surface_coordinates(const Tensor<1,3> &sposition) const;
 
+          /**
+           * This function looks up the north- and east-velocities at a given
+           * position and converts them to cartesian velocities.
+           */
           Tensor<1,dim>
-          cartesian_velocity_from_spherical_point(const std_cxx11::array<double,3> &spherical_point) const;
+          cartesian_velocity_at_surface_point(const std_cxx11::array<double,3> &spherical_point) const;
 
           /**
            * Returns cartesian velocities calculated from surface velocities
